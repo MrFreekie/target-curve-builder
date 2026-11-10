@@ -16,6 +16,12 @@ Findings about how Smaart handles `.crv` target curves. Keep this up to date.
 - **`UseTolerance`:** present in the user's files but not mentioned in the article.
 - **Colour:** `Color: ffff0000` draws red. AARRGGBB is assumed but **not yet confirmed**.
 
+## Colour-test procedure
+1. Generate the files (already in the repo): `node scripts/make_colour_tests.mjs` writes `reference/manual/colour_test_green.crv` (`Color: ff00ff00`, flat +6 dB) and `colour_test_blue.crv` (`Color: ff0000ff`, flat −6 dB).
+2. In Smaart (9.4+, measurement edition), import both as TF target curves.
+3. Expected: the +6 dB curve is **green** and the −6 dB curve is **blue**. If they come out red/other or swapped, the byte order is not AARRGGBB: fix the mapping in `pickerToSmaart` / `smaartToPicker` in `js/formats/smaart.js` and its tests.
+4. Record the result in the checklist below.
+
 ## To confirm (manual test)
 - [ ] Load `reference/manual/colour_test_green.crv` (`ff00ff00`) and `colour_test_blue.crv` (`ff0000ff`) in Smaart. Expected: green and blue. Actual: ___
 - [ ] Does Smaart accept 1/24-octave (or denser) TF curves without lag? ___
