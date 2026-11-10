@@ -3,3 +3,7 @@ node_modules/
 __pycache__/
 *.pyc
 /tmp/
+Thumbs.db
+desktop.ini
+.vscode/
+.idea/
