@@ -17,7 +17,9 @@
       <button type="button" id="btn-presets">Presets</button>
       <button type="button" id="btn-theme">Theme: Auto</button>
       <button type="button" id="btn-new">New</button>
-      <button type="button" id="btn-export" class="primary">Export .crv</button>
+      <label for="export-format" class="sr-only">Export format</label>
+      <select id="export-format"></select>
+      <button type="button" id="btn-export" class="primary">Export</button>
     </div>
   </header>
 
@@ -84,7 +86,8 @@
       </section>
       <section class="status" aria-live="polite">
         <ul id="validation"></ul>
-        <p class="note">TF target curves need a measurement-capable edition of Smaart 9.4 or later, or Smaart Data Modeler. Smaart RTA can't import them.</p>
+        <p class="note" id="export-note-ascii" hidden>ASCII export writes Smaart's trace text layout: Hz, dB, phase and coherence, tab-separated, values rounded to 2 decimals. A target curve has no phase or coherence, so those columns are 0.00 and 1.00.</p>
+        <p class="note" id="export-note-crv">TF target curves need a measurement-capable edition of Smaart 9.4 or later, or Smaart Data Modeler. Smaart RTA can't import them.</p>
       </section>
     </main>
   </div>

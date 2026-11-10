@@ -14,13 +14,13 @@ TF target curves need a measurement-capable edition of **Smaart 9.4 or later**, 
 - **Output grid:** 1/12 octave by default, or 1/1, 1/3, 1/6, 1/24, or keep the imported file's own frequencies.
 - **Undo and redo:** Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z, at least 50 steps. Your work is autosaved in the browser.
 - **Presets:** save curves in the browser, or as JSON files you can share. Three built-in presets are included.
-- **Export:** one `.crv` at a time, with tabs only, 6-decimal values and CRLF line endings, as Smaart expects. An unchanged import exports byte for byte as it came in.
+- **Export:** one file at a time, as a Smaart target curve (`.crv`) or a Smaart ASCII trace (`.txt`: Hz, dB, phase 0, coherence 1). The `.crv` is written with tabs only, 6-decimal values and CRLF line endings, as Smaart expects. An unchanged import exports byte for byte as it came in.
 
 ## How to use it
 1. Open the live site. Start from a preset, a new curve, or **Import .crv**.
 2. Switch layers on and set their values (for example LF tilt 3 dB/oct at 1 kHz, plus an HPF at 32 Hz, Linkwitz-Riley 48 dB/oct).
 3. Set the name, colour, line width, tolerance and offset under **File properties**.
-4. Check the validation line says **Ready to export**, then press **Export .crv** and load the file in Smaart.
+4. Check the validation line says **Ready to export**, pick the export format, then press **Export** and load the file in Smaart.
 
 ## Run locally
 There is no build step. Serve the folder as static files:

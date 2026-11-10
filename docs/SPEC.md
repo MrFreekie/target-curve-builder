@@ -20,7 +20,7 @@ The maths in this spec is implemented independently in `reference/curve_ref.py`.
 ### Not in v1 (design for, don't build)
 - **Batch export:** explicitly out of scope. Do not add it.
 - **Spectrum (RTA) target curves:** export (`Band` header) comes in milestone 5. In v1, importing a spectrum file must work for viewing, with a notice that export is TF-only.
-- **Other export formats:** for example REW or generic text. Add these through the format adapter interface in §6.
+- **Other export formats:** for example REW. Add these through the format adapter interface in §6. (Added after v1.0.0: Smaart ASCII trace `.txt`, write only. See `docs/SMAART_NOTES.md`.)
 - **More filter types:** for example Bessel or custom orders. Add these through the filter registry in §4.4.
 - **Share-by-URL and offline PWA.**
 

@@ -1,5 +1,9 @@
 # Release notes
 
+## Unreleased
+- Export as a Smaart ASCII trace (`.txt`), chosen next to the Export button. Layout copied from a Smaart ASCII export; phase is written as 0 and coherence as 1.
+- A text file with no header is no longer mistaken for a spectrum `.crv` on import.
+
 ## v1.0.0
 
 First release. Build, import, edit and export Smaart transfer function target curves (`.crv`) in the browser.

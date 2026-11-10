@@ -33,7 +33,7 @@ export function sanitiseFileName(name) {
     let prev;
     do {
       prev = s;
-      s = s.replace(/[\s.]+$/, "").replace(/\.crv$/i, "");
+      s = s.replace(/[\s.]+$/, "").replace(/\.(crv|txt)$/i, "");
     } while (s !== prev);
   };
   trimEnd();
@@ -44,8 +44,13 @@ export function sanitiseFileName(name) {
 
 /** Download file name for a document, or "" if the name is empty after sanitising. */
 export function crvFileName(name) {
+  return exportFileName(name, ".crv");
+}
+
+/** Download file name for a document with the given extension (e.g. ".txt"), or "" if the name is empty. */
+export function exportFileName(name, ext) {
   const clean = sanitiseFileName(name);
-  return clean ? `${clean}.crv` : "";
+  return clean ? `${clean}${ext}` : "";
 }
 
 /** Parse the value of a known header key to a comparable form. */
@@ -254,6 +259,8 @@ export const smaartTf = {
   id: "smaart-tf",
   label: "Smaart TF target (.crv)",
   ext: ".crv",
+  mime: "application/octet-stream",
+  canExport: true,
   detect(text) {
     const r = readCrv(text);
     return r.kind === "tf" && r.points.length ? 1 : 0;
@@ -271,9 +278,11 @@ export const smaartSpectrum = {
   id: "smaart-spectrum",
   label: "Smaart spectrum target (.crv)",
   ext: ".crv",
+  canExport: false,
   detect(text) {
     const r = readCrv(text);
-    if (r.kind !== "spectrum" || !r.points.length) return 0;
+    // A .crv always has a header; text with none (for example a Smaart ASCII trace) isn't one.
+    if (r.kind !== "spectrum" || !r.points.length || !r.props.rawHeader.length) return 0;
     return r.props.band !== null && BANDS.includes(r.props.band) ? 1 : 0.5;
   },
   read(text) {

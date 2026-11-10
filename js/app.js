@@ -1,8 +1,8 @@
 // UI state and wiring. Maths lives in curve.js / layers.js; file formats in formats/.
 import { evaluate } from "./curve.js";
 import { FILTERS } from "./layers.js";
-import { getAdapter } from "./formats/index.js";
-import { fmt6, pickerToSmaart, smaartToPicker, crvFileName } from "./formats/smaart.js";
+import { getAdapter, writableAdapters } from "./formats/index.js";
+import { fmt6, pickerToSmaart, smaartToPicker, crvFileName, exportFileName } from "./formats/smaart.js";
 import { createPlot } from "./plot.js";
 import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf } from "./doc.js";
 import * as presets from "./presets.js";
@@ -31,11 +31,13 @@ function layerIssues(doc) {
 }
 
 /**
- * Evaluate a document and build the .crv text.
+ * Evaluate a document and build the export text.
+ * @param {object} doc
+ * @param {string} [formatId] Export format, default "smaart-tf" (.crv). A spectrum document is always blocked.
  * @returns {{points: number[][], text: string|null, issues: {level: string, message: string}[]}}
  */
-export function buildCrv(doc) {
-  const adapter = getAdapter(doc.props.format ?? "smaart-tf");
+export function buildCrv(doc, formatId = "smaart-tf") {
+  const adapter = getAdapter(doc.props.format === "smaart-spectrum" ? "smaart-spectrum" : formatId);
   const merged = layerIssues(doc);
   let points = [];
   let thrown = null;
@@ -515,7 +517,7 @@ function startApp() {
     refreshTitles();
     renderNotice();
     undoUi();
-    const { points, text, issues } = buildCrv(doc);
+    const { points, text, issues } = buildCrv(doc, exportFormat);
     let handles = [];
     const hl = pointsLayer();
     const hint = $("handle-hint");
@@ -568,6 +570,32 @@ function startApp() {
     $("btn-undo").disabled = !undoStack.length;
     $("btn-redo").disabled = !redoStack.length;
   }
+
+  // ---- export format (a view setting kept in this browser only)
+  let exportFormat = "smaart-tf";
+  try {
+    const saved = localStorage.getItem("tcb-export");
+    if (writableAdapters().some((a) => a.id === saved)) exportFormat = saved;
+  } catch { /* storage unavailable */ }
+  const sel = $("export-format");
+  for (const a of writableAdapters()) {
+    const o = document.createElement("option");
+    o.value = a.id;
+    o.textContent = a.label;
+    sel.append(o);
+  }
+  sel.value = exportFormat;
+  const applyExportUi = () => {
+    $("export-note-ascii").hidden = exportFormat !== "smaart-ascii";
+    $("export-note-crv").hidden = exportFormat !== "smaart-tf";
+  };
+  applyExportUi();
+  sel.addEventListener("change", () => {
+    exportFormat = sel.value;
+    try { localStorage.setItem("tcb-export", exportFormat); } catch { /* storage unavailable */ }
+    applyExportUi();
+    update();
+  });
 
   function download(name, text, type = "application/octet-stream") {
     const blob = new Blob([text], { type });
@@ -765,8 +793,9 @@ function startApp() {
   window.addEventListener("pagehide", () => presets.autosave(lastJson));
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") presets.autosave(lastJson); });
   $("btn-export").addEventListener("click", () => {
-    const { text } = buildCrv(doc);
-    if (text) download(crvFileName(doc.props.name), text);
+    const { text } = buildCrv(doc, exportFormat);
+    const adapter = getAdapter(exportFormat);
+    if (text) download(exportFileName(doc.props.name, adapter.ext), text, adapter.mime);
   });
   const THEMES = ["auto", "dark", "light"];
   let theme = "auto";

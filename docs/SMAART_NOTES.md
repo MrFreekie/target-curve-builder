@@ -16,6 +16,18 @@ Findings about how Smaart handles `.crv` target curves. Keep this up to date.
 - **`UseTolerance`:** present in the user's files but not mentioned in the article.
 - **Colour:** `Color: ffff0000` draws red. **Confirmed AARRGGBB** (2026-11-10): `ff00ff00` draws green and `ff0000ff` draws blue in Smaart.
 
+## ASCII trace export (`.txt`)
+Layout copied from a Smaart "export ASCII" file of a transfer function trace (user's `Show.txt`, 2026-11-10):
+- CRLF on every line, including one after the last row. No blank lines. Tabs between columns.
+- Line 1: TAB, trace name, TAB, TAB.
+- Line 2: `Frequency (Hz)`, `Magnitude (dB)`, `Phase (degrees)`, `Coherence` (tab-separated).
+- Rows: frequency with 6 decimals, then magnitude, phase and coherence with 2 decimals. Bins Smaart hasn't measured are written as `*` in all three data columns.
+- Frequencies in a measured trace follow Smaart's multi-time-window bins (1.464844 Hz steps at the bottom, widening upwards). Our export writes the curve's own output grid instead.
+- Our target-curve export writes phase `0.00` and coherence `1.00`. Not yet tested by loading it anywhere.
+
+## Binary trace files (`.trf`)
+Not supported. A `.trf` is a proprietary binary measurement file (`JACKREF!` header, device and channel names, then blocks of 16,384 doubles) and its frequency mapping isn't known. Use the `.crv` target or the ASCII export instead.
+
 ## Colour-test procedure
 1. Generate the files (already in the repo): `node scripts/make_colour_tests.mjs` writes `reference/manual/colour_test_green.crv` (`Color: ff00ff00`, flat +6 dB) and `colour_test_blue.crv` (`Color: ff0000ff`, flat −6 dB).
 2. In Smaart (9.4+, measurement edition), import both as TF target curves.
