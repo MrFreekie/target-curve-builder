@@ -43,6 +43,8 @@ input[aria-invalid="true"] { border-color: var(--danger); outline: 2px solid var
 .field { display: grid; grid-template-columns: 1fr 140px; align-items: center; gap: 8px; margin-bottom: 6px; }
 .field input[type="text"], .field select { width: 100%; }
 .field input[type="checkbox"] { justify-self: start; }
+.suggest { margin: -2px 0 8px; }
+.suggest button { width: 100%; text-align: left; font-size: 0.85rem; min-height: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
 .row-head h2 { margin: 0; }
 .add { display: flex; gap: 6px; }

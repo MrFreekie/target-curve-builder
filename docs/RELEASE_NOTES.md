@@ -1,6 +1,7 @@
 # Release notes
 
 ## Unreleased
+- Name suggestion under the Name field, built from the enabled layers in the style of the reference files (for example `Tilt_3dBoct_1000Hz_HPF32_LR48`). It updates as you edit, and a click applies it.
 - Export as a Smaart ASCII trace (`.txt`), chosen next to the Export button. Layout copied from a Smaart ASCII export; phase is written as 0 and coherence as 1.
 - A text file with no header is no longer mistaken for a spectrum `.crv` on import.
 

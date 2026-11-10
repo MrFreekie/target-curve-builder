@@ -6,6 +6,7 @@ import { fmt6, pickerToSmaart, smaartToPicker, crvFileName, exportFileName } fro
 import { createPlot } from "./plot.js";
 import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf } from "./doc.js";
 import * as presets from "./presets.js";
+import { suggestName } from "./naming.js";
 
 export { newDoc, newLayer };
 
@@ -512,8 +513,19 @@ function startApp() {
     }
   }
 
+  function renderSuggestion() {
+    const name = suggestName(doc);
+    const b = $("btn-suggest");
+    const same = doc.props.name === name;
+    b.textContent = same ? `Name matches layers: ${name}` : `Use suggested name: ${name}`;
+    b.setAttribute("aria-label", same ? `The name already matches the layers: ${name}` : `Use suggested name ${name}`);
+    b.disabled = same;
+    b.dataset.name = name;
+  }
+
   function update() {
     track();
+    renderSuggestion();
     refreshTitles();
     renderNotice();
     undoUi();
@@ -626,6 +638,12 @@ function startApp() {
     });
   };
   $("p-name").addEventListener("input", () => { doc.props.name = $("p-name").value; update(); });
+  $("btn-suggest").addEventListener("click", () => {
+    doc.props.name = $("btn-suggest").dataset.name;
+    $("p-name").value = doc.props.name;
+    update();
+    $("p-name").focus();
+  });
   $("p-color").addEventListener("input", () => { doc.props.color = pickerToSmaart($("p-color").value); update(); });
   $("p-line").addEventListener("change", () => { doc.props.line = Number($("p-line").value); update(); });
   $("p-show").addEventListener("change", () => { doc.props.show = $("p-show").checked ? 1 : 0; update(); });

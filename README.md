@@ -13,6 +13,7 @@ TF target curves need a measurement-capable edition of **Smaart 9.4 or later**, 
 - **Import:** drop a `.crv` anywhere on the page, or use **Import .crv**. The original stays on the plot as a dashed grey line. Spectrum curves can be viewed and converted to TF.
 - **Output grid:** 1/12 octave by default, or 1/1, 1/3, 1/6, 1/24, or keep the imported file's own frequencies.
 - **Undo and redo:** Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z, at least 50 steps. Your work is autosaved in the browser.
+- **Name suggestion:** one click names the curve from its layers, for example `Tilt_3dBoct_1000Hz_HPF32_LR48`.
 - **Presets:** save curves in the browser, or as JSON files you can share. Three built-in presets are included.
 - **Export:** one file at a time, as a Smaart target curve (`.crv`) or a Smaart ASCII trace (`.txt`: Hz, dB, phase 0, coherence 1). The `.crv` is written with tabs only, 6-decimal values and CRLF line endings, as Smaart expects. An unchanged import exports byte for byte as it came in.
 
