@@ -1,0 +1,22 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Reference self-check
+        run: python3 -I reference/curve_ref.py --check
+      - name: JS tests
+        run: |
+          if ls tests/*.test.mjs >/dev/null 2>&1; then node --test tests/; else echo "no JS tests yet"; fi
