@@ -40,9 +40,11 @@ export function formatDb(g) {
 /**
  * Create a plot inside an <svg> element.
  * @param {SVGSVGElement} svg
+ * @param {{onDragStart?: Function, onDrag?: Function, onDragEnd?: Function, onNudge?: Function}} [callbacks]
+ *   Handle callbacks: onDragStart(i), onDrag(i, dDb, hzOrNull), onDragEnd(i), onNudge(i, dDb).
  * @returns {{render(model: object): void}}
  */
-export function createPlot(svg) {
+export function createPlot(svg, callbacks = {}) {
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
   svg.setAttribute("role", "img");
   svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
@@ -55,25 +57,31 @@ export function createPlot(svg) {
   const layers = {
     grid: el("g", { class: "grid" }),
     clipped: el("g", { "clip-path": `url(#${clipId})` }),
+    handles: el("g", { class: "handles" }),
     hover: el("g", { class: "hover" }),
   };
   const defs = el("defs");
   const clip = el("clipPath", { id: clipId });
   clip.append(el("rect", { x: M.l, y: M.t, width: PW, height: PH }));
   defs.append(clip);
-  svg.append(defs, layers.grid, layers.clipped, layers.hover);
+  svg.append(defs, layers.grid, layers.clipped, layers.handles, layers.hover);
+  let drag = null;
+  let rovingIndex = 0;
 
   const hoverLine = el("line", { class: "hover-line", y1: M.t, y2: M.t + PH, visibility: "hidden" });
   const hoverDot = el("circle", { class: "hover-dot", r: 4, visibility: "hidden" });
   const readout = el("text", { class: "readout", x: M.l + 8, y: M.t + 18 }, "");
   layers.hover.append(hoverLine, hoverDot, readout);
 
-  function range(curves) {
+  function range(curves, wide) {
     let lo = Infinity;
     let hi = -Infinity;
     for (const c of curves) for (const [, g] of c) if (Number.isFinite(g)) { lo = Math.min(lo, g); hi = Math.max(hi, g); }
     let a = -24;
     let b = 24;
+    if (wide && Number.isFinite(lo)) {
+      return [Math.floor((lo - 3) / 6) * 6, Math.ceil((hi + 3) / 6) * 6];
+    }
     if (Number.isFinite(lo)) {
       a = Math.min(a, Math.floor((lo - 3) / 6) * 6);
       b = Math.max(b, Math.ceil((hi + 3) / 6) * 6);
@@ -103,14 +111,15 @@ export function createPlot(svg) {
   const path = (pts) => pts.map(([f, g], i) => `${i ? "L" : "M"}${xOf(f).toFixed(2)},${yOf(g).toFixed(2)}`).join(" ");
 
   /**
-   * @param {{points: number[][], original?: number[][]|null, color: string, line: number,
+   * @param {{points: number[][], original?: number[][]|null, yRange?: number|null, color: string, line: number,
    *          tolerance: number, useTolerance: boolean, show: boolean, description: string}} m
    */
   function render(m) {
     model = m;
     const curves = [m.points];
     if (m.original) curves.push(m.original);
-    [yMin, yMax] = range(curves);
+    if (!drag) [yMin, yMax] = m.yRange ? [-m.yRange, m.yRange] : range(curves, m.wide);
+    const focused = svg.contains(document.activeElement) ? document.activeElement.dataset?.handle : undefined;
     drawGrid();
     const g = layers.clipped;
     g.replaceChildren();
@@ -127,13 +136,96 @@ export function createPlot(svg) {
       g.append(el("path", { d: path(m.points), class: "curve", stroke: color, "stroke-width": 1 + m.line, "stroke-dasharray": m.show ? "none" : "6 4" }));
       for (const [f, v] of m.points) g.append(el("circle", { cx: xOf(f), cy: yOf(v), r: 3, class: "pt", stroke: color }));
     }
+    layers.handles.replaceChildren();
+    const hs = m.handles ?? [];
+    if (rovingIndex >= hs.length) rovingIndex = 0;
+    for (const h of hs) {
+      const cx = Math.min(M.l + PW, Math.max(M.l, xOf(h.f)));
+      const cy = Math.min(M.t + PH, Math.max(M.t, yOf(h.g)));
+      layers.handles.append(el("circle", { cx, cy, r: 8, class: "handle-dot" }));
+      // A large invisible circle is the real target: easy to hit with a finger.
+      const c = el("circle", {
+        cx, cy, r: 22, class: "handle", tabindex: h.i === rovingIndex ? 0 : -1, role: "slider",
+        "data-handle": h.i, "data-f": h.f, "data-g": h.g,
+        "aria-label": `Point ${h.i + 1}, ${formatHz(h.f)}`, "aria-orientation": "vertical",
+        "aria-valuemin": yMin, "aria-valuemax": yMax, "aria-valuenow": Math.round(h.g * 100) / 100,
+        "aria-valuetext": formatDb(h.g),
+      });
+      layers.handles.append(c);
+      if (focused !== undefined && String(h.i) === focused) c.focus({ preventScroll: true });
+    }
     svg.setAttribute("aria-label", m.description);
     hoverLine.setAttribute("visibility", "hidden");
     hoverDot.setAttribute("visibility", "hidden");
     readout.textContent = "";
   }
 
+  const toSvg = (ev) => {
+    const box = svg.getBoundingClientRect();
+    return [((ev.clientX - box.left) / box.width) * W, ((ev.clientY - box.top) / box.height) * H];
+  };
+  const snap24 = (f) => Math.min(FMAX, Math.max(FMIN, Math.round(1000 * 2 ** (Math.round(24 * Math.log2(f / 1000)) / 24) * 1e6) / 1e6));
+
+  svg.addEventListener("pointerdown", (ev) => {
+    const i = ev.target.dataset?.handle;
+    if (i === undefined || !callbacks.onDrag || ev.button !== 0) return;
+    ev.preventDefault();
+    const [x0, y0] = toSvg(ev);
+    drag = { i: Number(i), x0, y0, f0: Number(ev.target.dataset.f), g0: Number(ev.target.dataset.g), pointer: ev.pointerId };
+    rovingIndex = drag.i;
+    svg.setPointerCapture(ev.pointerId);
+    callbacks.onDragStart?.(drag.i);
+  });
+  svg.addEventListener("pointerup", (ev) => {
+    if (!drag || ev.pointerId !== drag.pointer) return;
+    const i = drag.i;
+    drag = null;
+    callbacks.onDragEnd?.(i);
+  });
+  svg.addEventListener("lostpointercapture", () => {
+    if (!drag) return;
+    const i = drag.i;
+    drag = null;
+    callbacks.onDragEnd?.(i);
+  });
+  svg.addEventListener("focusin", (ev) => {
+    const i = ev.target.dataset?.handle;
+    if (i === undefined) return;
+    rovingIndex = Number(i);
+    for (const h of layers.handles.querySelectorAll(".handle")) h.tabIndex = h.dataset.handle === i ? 0 : -1;
+  });
+  svg.addEventListener("pointercancel", () => {
+    if (!drag) return;
+    const i = drag.i;
+    drag = null;
+    callbacks.onDragEnd?.(i);
+  });
+  svg.addEventListener("keydown", (ev) => {
+    const i = ev.target.dataset?.handle;
+    if (i === undefined || !callbacks.onNudge) return;
+    const step = ev.shiftKey ? 0.1 : 0.5;
+    const all = [...layers.handles.querySelectorAll(".handle")];
+    const at = all.findIndex((h) => h.dataset.handle === i);
+    if (ev.key === "ArrowUp") callbacks.onNudge(Number(i), step);
+    else if (ev.key === "ArrowDown") callbacks.onNudge(Number(i), -step);
+    else if (ev.key === "ArrowRight" || ev.key === "PageDown") all[Math.min(all.length - 1, at + 1)]?.focus();
+    else if (ev.key === "ArrowLeft" || ev.key === "PageUp") all[Math.max(0, at - 1)]?.focus();
+    else if (ev.key === "Home") all[0]?.focus();
+    else if (ev.key === "End") all[all.length - 1]?.focus();
+    else return;
+    ev.preventDefault();
+  });
+
   function onMove(ev) {
+    if (drag) {
+      const [x, y] = toSvg(ev);
+      // Keep the point inside the plot's dB range, however far the pointer goes.
+      const dDb = Math.min(yMax - drag.g0, Math.max(yMin - drag.g0, ((drag.y0 - y) / PH) * (yMax - yMin)));
+      // Shift moves the frequency by the pointer's offset from where it was grabbed; no Shift restores it.
+      const hz = ev.shiftKey ? snap24(drag.f0 * 2 ** (((x - drag.x0) / PW) * OCTAVES)) : drag.f0;
+      callbacks.onDrag(drag.i, dDb, hz);
+      return;
+    }
     if (!model || model.points.length < 2) return;
     const box = svg.getBoundingClientRect();
     const x = ((ev.clientX - box.left) / box.width) * W;
@@ -143,7 +235,7 @@ export function createPlot(svg) {
     hoverLine.setAttribute("x1", x);
     hoverLine.setAttribute("x2", x);
     hoverDot.setAttribute("cx", x);
-    hoverDot.setAttribute("cy", yOf(g));
+    hoverDot.setAttribute("cy", Math.min(M.t + PH, Math.max(M.t, yOf(g))));
     hoverLine.setAttribute("visibility", "visible");
     hoverDot.setAttribute("visibility", "visible");
     readout.textContent = `${formatHz(f)}  ${formatDb(g)}`;

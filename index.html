@@ -11,6 +11,10 @@
   <header class="topbar">
     <h1>Target Curve Builder</h1>
     <div class="actions">
+      <button type="button" id="btn-undo" disabled title="Undo (Ctrl+Z)">Undo</button>
+      <button type="button" id="btn-redo" disabled title="Redo (Shift+Ctrl+Z)">Redo</button>
+      <button type="button" id="btn-import">Import .crv</button>
+      <button type="button" id="btn-presets">Presets</button>
       <button type="button" id="btn-theme">Theme: Auto</button>
       <button type="button" id="btn-new">New</button>
       <button type="button" id="btn-export" class="primary">Export .crv</button>
@@ -55,7 +59,15 @@
     </aside>
 
     <main class="main">
+      <div id="notice" class="notice" role="status" hidden></div>
+      <div class="plot-tools">
+        <label for="zoom-auto">Auto range</label><input id="zoom-auto" type="checkbox" checked>
+        <label for="zoom">Zoom ± dB</label>
+        <input id="zoom" type="range" min="15" max="40" step="1" value="24" disabled aria-describedby="zoom-val">
+        <output id="zoom-val" for="zoom">Auto</output>
+      </div>
       <svg id="plot" class="plot" aria-describedby="points-table"><title>Target curve plot</title></svg>
+      <p class="note" id="handle-hint"></p>
       <p class="note">Dashed curve line: Show in Smaart is off. Dashed grey line: the imported original.</p>
       <section aria-labelledby="h-table">
         <div class="row-head">
@@ -76,6 +88,13 @@
       </section>
     </main>
   </div>
+  <input type="file" id="file-import" accept=".crv,.txt,text/plain" hidden>
+  <input type="file" id="file-preset" accept=".json,application/json" hidden>
+  <dialog id="dlg-presets" aria-labelledby="h-presets">
+    <div class="row-head"><h2 id="h-presets">Presets</h2><button type="button" id="btn-presets-close">Close</button></div>
+    <div id="presets-body"></div>
+    <p id="presets-status" class="note" role="status" tabindex="-1"></p>
+  </dialog>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

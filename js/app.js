@@ -4,55 +4,10 @@ import { FILTERS } from "./layers.js";
 import { getAdapter } from "./formats/index.js";
 import { fmt6, pickerToSmaart, smaartToPicker, crvFileName } from "./formats/smaart.js";
 import { createPlot } from "./plot.js";
+import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf } from "./doc.js";
+import * as presets from "./presets.js";
 
-const LAYER_KINDS = {
-  points: "Points",
-  lfTilt: "LF tilt",
-  hfTilt: "HF tilt",
-  fullTilt: "Full-spectrum tilt",
-  hpf: "HPF",
-  lpf: "LPF",
-  gain: "Gain",
-};
-
-let nextId = 1;
-const newId = () => `L${nextId++}`;
-
-/** A new document with the defaults from SPEC §4.5. */
-export function newDoc() {
-  return {
-    version: 1,
-    props: {
-      name: "Target curve", format: "smaart-tf", line: 2, color: "ffff0000", show: 1,
-      tolerance: 3, useTolerance: 0, offset: null, extraHeader: [], lineEnding: "\r\n", trailingNewline: true,
-    },
-    grid: { mode: "resample", fraction: 3, fmin: 20, fmax: 20000 },
-    layers: [
-      { id: newId(), kind: "points", on: true, points: [[20, 0], [20000, 0]] },
-      { id: newId(), kind: "lfTilt", on: false, dbPerOct: 3, pivot: 1000, floor: null },
-      { id: newId(), kind: "fullTilt", on: false, dbPerOct: 1, pivot: 1000 },
-      { id: newId(), kind: "hfTilt", on: false, dbPerOct: 1.5, corner: 4000 },
-      { id: newId(), kind: "hpf", on: false, fc: 32, type: "LR", slope: 48 },
-      { id: newId(), kind: "lpf", on: false, fc: 16000, type: "LR", slope: 24 },
-    ],
-    normalise: { on: false, at: 1000 },
-    original: null,
-  };
-}
-
-/** A fresh layer of the given kind, switched on. */
-export function newLayer(kind) {
-  const base = { id: newId(), kind, on: true };
-  switch (kind) {
-    case "points": return { ...base, points: [[20, 0], [20000, 0]] };
-    case "lfTilt": return { ...base, dbPerOct: 3, pivot: 1000, floor: null };
-    case "fullTilt": return { ...base, dbPerOct: 1, pivot: 1000 };
-    case "hfTilt": return { ...base, dbPerOct: 1.5, corner: 4000 };
-    case "hpf": return { ...base, fc: 32, type: "LR", slope: 48 };
-    case "lpf": return { ...base, fc: 16000, type: "LR", slope: 24 };
-    default: return { ...base, kind: "gain", db: 0 };
-  }
-}
+export { newDoc, newLayer };
 
 /** Layer-level problems the format validator can't see. */
 function layerIssues(doc) {
@@ -111,9 +66,126 @@ function parseNum(s) {
 
 function startApp() {
   const $ = (id) => document.getElementById(id);
-  let doc = newDoc();
+  let doc = presets.loadAutosave() ?? newDoc();
+  let importMessages = [];
   const expanded = new Set();
-  const plot = createPlot($("plot"));
+  const plot = createPlot($("plot"), { onDragStart: dragStart, onDrag: dragMove, onDragEnd: dragEnd, onNudge: nudge });
+
+  // ---- undo / redo / autosave
+  const undoStack = [];
+  const redoStack = [];
+  let lastJson = JSON.stringify(doc);
+  let dragging = false;
+  let saveTimer = null;
+  let lastPushAt = 0;
+  let lastPushEl = null;
+  /** A stable name for "the control being edited", or null if edits shouldn't be merged. */
+  function coalesceKey(el) {
+    if (!el) return null;
+    if (el.dataset && el.dataset.handle !== undefined) return `handle${el.dataset.handle}`;
+    if (el.tagName === "INPUT" && ["text", "color", "range"].includes(el.type)) return el.id || el;
+    return null;
+  }
+  const MAX_UNDO = 100;
+
+  /** Record the document in the undo history if it changed since the last call. */
+  function track() {
+    if (dragging) return;
+    const json = JSON.stringify(doc);
+    if (json === lastJson) return;
+    // Rapid edits of one control (typing, a colour or slider drag, arrow-key nudges) share one undo step.
+    const key = coalesceKey(document.activeElement);
+    if (!(key && key === lastPushEl && Date.now() - lastPushAt < 800)) {
+      undoStack.push(lastJson);
+      if (undoStack.length > MAX_UNDO) undoStack.shift();
+    }
+    lastPushAt = Date.now();
+    lastPushEl = key;
+    redoStack.length = 0;
+    lastJson = json;
+    scheduleSave();
+  }
+
+  let autosaveWarned = false;
+  function saveNow() {
+    if (presets.autosave(lastJson) || autosaveWarned) return;
+    autosaveWarned = true;
+    importMessages.push("Autosave isn't available in this browser, so your work won't be restored after a reload. Use Presets > Save preset as JSON to keep it.");
+    noticeSig = "";
+    renderNotice();
+  }
+  function scheduleSave() {
+    clearTimeout(saveTimer);
+    saveTimer = setTimeout(saveNow, 300);
+  }
+
+  function setDoc(next) {
+    doc = next;
+    expanded.clear();
+    refreshAll();
+  }
+
+  function restore(json) {
+    // Remember which layer control has focus so it can be refocused after the list is rebuilt.
+    const a = document.activeElement;
+    const li = a && a.closest ? a.closest("#layers li") : null;
+    const focus = li && a.dataset.action ? [li.dataset.id, a.dataset.action] : undefined;
+    doc = JSON.parse(json);
+    lastJson = json;
+    lastPushEl = null;
+    refreshAll(focus);
+    scheduleSave();
+  }
+
+  function undo() {
+    if (dragging || !undoStack.length) return;
+    redoStack.push(lastJson);
+    restore(undoStack.pop());
+  }
+
+  function redo() {
+    if (dragging || !redoStack.length) return;
+    undoStack.push(lastJson);
+    restore(redoStack.pop());
+  }
+
+  function refreshAll(focus) {
+    renderProps();
+    renderLayers(focus);
+    update();
+  }
+
+  // ---- drag handles on the plot (edit the first points layer that is on)
+  let dragBase = null;
+  const pointsLayer = () => doc.layers.find((l) => l.kind === "points" && l.on);
+  function dragStart(i) {
+    const l = pointsLayer();
+    if (!l || !l.points[i]) return;
+    dragging = true;
+    dragBase = { db: l.points[i][1] };
+  }
+  function dragMove(i, dDb, hz) {
+    const l = pointsLayer();
+    if (!dragging || !l || !l.points[i]) return;
+    l.points[i][1] = Math.round((dragBase.db + dDb) * 100) / 100;
+    if (hz !== null) l.points[i][0] = hz;
+    if (expanded.has(l.id)) renderLayers();
+    update();
+  }
+  function dragEnd() {
+    dragging = false;
+    const l = pointsLayer();
+    if (l) l.points.sort((a, b) => a[0] - b[0]);
+    renderLayers();
+    update();
+  }
+  function nudge(i, d) {
+    const l = pointsLayer();
+    if (!l || !l.points[i]) return;
+    l.points[i][1] = Math.round((l.points[i][1] + d) * 100) / 100;
+    if (expanded.has(l.id)) renderLayers();
+    update();
+  }
   let uid = 0;
 
   /** Text input bound to a number. `optional` lets an empty box mean null. */
@@ -189,7 +261,8 @@ function startApp() {
     thead.className = "sr-only";
     thead.innerHTML = "<tr><th>Hz</th><th>dB</th><th>Delete</th></tr>";
     const tbody = table.createTBody();
-    const rebuild = () => {
+    let addBtn = null;
+    const rebuild = (focus) => {
       tbody.replaceChildren();
       l.points.forEach((p, i) => {
         const tr = document.createElement("tr");
@@ -219,14 +292,21 @@ function startApp() {
         b.className = "icon";
         b.textContent = "✕";
         b.setAttribute("aria-label", `Delete point ${i + 1}`);
-        b.addEventListener("click", () => { l.points.splice(i, 1); rebuild(); update(); });
+        b.addEventListener("click", () => {
+          l.points.splice(i, 1);
+          rebuild(l.points.length ? { row: Math.min(i, l.points.length - 1), col: 2 } : { add: true });
+          update();
+        });
         del.append(b);
         tr.append(mk(0, "Hz"), mk(1, "dB"), del);
         tbody.append(tr);
       });
+      if (focus?.add) addBtn?.focus();
+      else if (focus) tbody.rows[focus.row]?.cells[focus.col].querySelector("input, button")?.focus();
     };
     rebuild();
     const add = document.createElement("button");
+    addBtn = add;
     add.type = "button";
     add.textContent = "Add point";
     add.addEventListener("click", () => {
@@ -234,9 +314,11 @@ function startApp() {
       const prev = l.points.length > 1 ? l.points[l.points.length - 2] : null;
       // New point: halfway (in log frequency) between the last two points, or an octave above the last.
       const hz = last ? (prev ? Math.sqrt(prev[0] * last[0]) : Math.min(last[0] * 2, 20000)) : 1000;
-      l.points.push([Math.round(hz * 100) / 100, last ? last[1] : 0]);
+      let newHz = Math.round(hz * 100) / 100;
+      while (l.points.some((q) => q[0] === newHz)) newHz = Math.round(newHz * 0.97 * 100) / 100; // keep frequencies unique
+      l.points.push([newHz, last ? last[1] : 0]);
       l.points.sort((x, y) => x[0] - y[0]);
-      rebuild();
+      rebuild({ row: l.points.findIndex((q) => q[0] === newHz), col: 0 });
       update();
     });
     box.append(table, add);
@@ -381,10 +463,72 @@ function startApp() {
     }
   }
 
+  // ---- plot zoom (a view setting, kept in this browser only)
+  let zoom = null; // null = auto range, otherwise +/- dB from 15 to 40
+  try {
+    const saved = Number(localStorage.getItem("tcb-zoom"));
+    if (saved >= 15 && saved <= 40) zoom = saved;
+  } catch { /* storage unavailable */ }
+  const applyZoomUi = () => {
+    $("zoom-auto").checked = zoom === null;
+    $("zoom").disabled = zoom === null;
+    if (zoom !== null) $("zoom").value = String(zoom);
+    $("zoom-val").textContent = zoom === null ? "Auto" : `±${zoom} dB`;
+  };
+  const setZoom = (z) => {
+    zoom = z;
+    try { localStorage.setItem("tcb-zoom", z === null ? "" : String(z)); } catch { /* storage unavailable */ }
+    applyZoomUi();
+    update();
+  };
+  $("zoom-auto").addEventListener("change", () => setZoom($("zoom-auto").checked ? null : Number($("zoom").value)));
+  $("zoom").addEventListener("input", () => setZoom(Number($("zoom").value)));
+  applyZoomUi();
+
+  let noticeSig = "";
+  function renderNotice() {
+    const msgs = [...importMessages];
+    const isSpectrum = doc.props.format === "smaart-spectrum";
+    if (isSpectrum) msgs.push("Spectrum curve: export as Spectrum arrives in a later version. You can view it here, or convert it to a TF curve (normalised to 0 dB at 1 kHz).");
+    const sig = JSON.stringify([msgs, isSpectrum]);
+    if (sig === noticeSig) return;
+    noticeSig = sig;
+    const host = $("notice");
+    host.replaceChildren();
+    host.hidden = msgs.length === 0;
+    for (const m of msgs) {
+      const p = document.createElement("p");
+      p.textContent = m;
+      host.append(p);
+    }
+    if (isSpectrum) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.textContent = "Convert to TF";
+      b.addEventListener("click", () => { importMessages = []; doc = convertToTf(doc); refreshAll(); $("p-name").focus(); });
+      host.append(b);
+    }
+  }
+
   function update() {
+    track();
     refreshTitles();
+    renderNotice();
+    undoUi();
     const { points, text, issues } = buildCrv(doc);
+    let handles = [];
+    const hl = pointsLayer();
+    const hint = $("handle-hint");
+    if (!hl) hint.textContent = "Switch on a Points layer to drag points on the plot.";
+    else if (hl.points.length > 200) hint.textContent = "This Points layer has more than 200 points, so drag handles are hidden. Edit values in the layer's table.";
+    else hint.textContent = "Drag a point to change its level. Hold Shift to move its frequency too. With a point focused: Up/Down nudge, Left/Right switch point.";
+    if (hl && hl.points.length && hl.points.length <= 200) {
+      try {
+        handles = evaluate(doc, hl.points.map((pt) => pt[0])).map(([f, g], i) => ({ f, g, i }));
+      } catch { handles = []; }
+    }
     plot.render({
+      handles, wide: doc.props.format === "smaart-spectrum", yRange: doc.props.format === "smaart-spectrum" ? null : zoom,
       points, original: doc.original, color: doc.props.color, line: Number(doc.props.line) || 2,
       tolerance: Number(doc.props.tolerance) || 0, useTolerance: !!doc.props.useTolerance, show: !!doc.props.show,
       description: points.length
@@ -420,8 +564,13 @@ function startApp() {
     $("btn-export").disabled = !text;
   }
 
-  function download(name, text) {
-    const blob = new Blob([text], { type: "application/octet-stream" });
+  function undoUi() {
+    $("btn-undo").disabled = !undoStack.length;
+    $("btn-redo").disabled = !redoStack.length;
+  }
+
+  function download(name, text, type = "application/octet-stream") {
+    const blob = new Blob([text], { type });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
@@ -475,13 +624,146 @@ function startApp() {
 
   // ---- top bar
   $("btn-new").addEventListener("click", () => {
-    if (!window.confirm("Start a new curve? Your current curve will be discarded.")) return;
-    doc = newDoc();
-    expanded.clear();
-    renderProps();
-    renderLayers();
-    update();
+    importMessages = [];
+    setDoc(newDoc());
   });
+  $("btn-undo").addEventListener("click", undo);
+  $("btn-redo").addEventListener("click", redo);
+  document.addEventListener("keydown", (ev) => {
+    if (!(ev.ctrlKey || ev.metaKey) || ev.altKey || dlg.open) return;
+    const el = document.activeElement;
+    if (el && el.tagName === "INPUT" && el.type === "text") return; // let the text box undo its own typing
+    const key = ev.key.toLowerCase();
+    if (key === "z" && !ev.shiftKey) { ev.preventDefault(); undo(); }
+    else if ((key === "z" && ev.shiftKey) || key === "y") { ev.preventDefault(); redo(); }
+  });
+
+  // ---- import
+  async function importFile(file, extra = []) {
+    if (!file) return;
+    if (file.size > 2_000_000) { importMessages = ["That file is too large to be a target curve."]; noticeSig = ""; renderNotice(); return; }
+    try {
+      if (/\.json$/i.test(file.name)) {
+        importMessages = extra;
+        setDoc(presets.presetFromJson(await file.text()));
+        return;
+      }
+      const { doc: imported, warnings } = docFromImport(await file.text(), file.name);
+      importMessages = [...extra, ...warnings];
+      setDoc(imported);
+    } catch (e) {
+      importMessages = [`Couldn't import ${file.name}: ${e.message}`];
+      noticeSig = "";
+      renderNotice();
+    }
+  }
+  $("btn-import").addEventListener("click", () => $("file-import").click());
+  $("file-import").addEventListener("change", () => { importFile($("file-import").files[0]); $("file-import").value = ""; });
+  const hasFiles = (ev) => ev.dataTransfer && [...ev.dataTransfer.types].includes("Files");
+  document.addEventListener("dragover", (ev) => { if (hasFiles(ev) && !dlg.open) { ev.preventDefault(); document.body.classList.add("dropping"); } });
+  document.addEventListener("dragleave", (ev) => { if (!ev.relatedTarget) document.body.classList.remove("dropping"); });
+  document.addEventListener("dragend", () => document.body.classList.remove("dropping"));
+  document.addEventListener("drop", (ev) => {
+    if (!hasFiles(ev)) return;
+    ev.preventDefault();
+    document.body.classList.remove("dropping");
+    if (dlg.open) return;
+    const files = ev.dataTransfer.files;
+    importFile(files[0], files.length > 1 ? ["Several files were dropped: only the first was opened."] : []);
+  });
+
+  // ---- presets dialog
+  const dlg = $("dlg-presets");
+  function renderPresets(status = "", draftName = doc.props.name) {
+    const body = $("presets-body");
+    body.replaceChildren();
+    const h = (text) => { const e = document.createElement("h3"); e.textContent = text; body.append(e); };
+    const row = (label, buttons) => {
+      const li = document.createElement("li");
+      const span = document.createElement("span");
+      span.textContent = label;
+      li.append(span);
+      for (const [text, fn, aria] of buttons) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.textContent = text;
+        b.setAttribute("aria-label", `${aria ?? text}: ${label}`);
+        b.addEventListener("click", fn);
+        li.append(b);
+      }
+      return li;
+    };
+    const load = (d) => { importMessages = []; setDoc(d); dlg.close(); };
+    const status_ = (msg, name) => { renderPresets(msg, name); $("presets-status").focus(); };
+    h("Built-in");
+    const ul1 = document.createElement("ul");
+    for (const bp of presets.BUILT_IN_PRESETS) ul1.append(row(bp.name, [["Load", () => load(bp.build())]]));
+    body.append(ul1);
+    h("Saved in this browser");
+    const ul2 = document.createElement("ul");
+    const names = presets.listPresets();
+    if (!names.length) { const li = document.createElement("li"); li.textContent = "Nothing saved yet."; ul2.append(li); }
+    for (const n of names) {
+      ul2.append(row(n, [
+        ["Load", () => { const d = presets.loadPreset(n); if (d) load(d); else status_("That preset couldn't be read."); }],
+        ["Delete", () => { if (window.confirm(`Delete the saved preset "${n}"?`)) { presets.deletePreset(n); status_(`Deleted "${n}".`); } }],
+      ]));
+    }
+    body.append(ul2);
+    h("Save current curve");
+    const wrap = document.createElement("div");
+    wrap.className = "field";
+    const lab = document.createElement("label");
+    lab.htmlFor = "preset-name";
+    lab.textContent = "Preset name";
+    const input = document.createElement("input");
+    input.type = "text";
+    input.id = "preset-name";
+    input.value = draftName;
+    const save = document.createElement("button");
+    save.type = "button";
+    save.textContent = "Save in browser";
+    save.addEventListener("click", () => {
+      const name = input.value.trim();
+      if (!name) { status_("Give the preset a name.", input.value); return; }
+      if (presets.hasPreset(name) && !window.confirm(`Replace the saved preset "${name}"?`)) return;
+      status_(presets.savePreset(name, doc) ? `Saved "${name}".` : "Couldn't save: this browser is blocking storage.", name);
+    });
+    wrap.append(lab, input);
+    body.append(wrap, save);
+    h("Files");
+    const files = document.createElement("div");
+    files.className = "actions";
+    const toFile = document.createElement("button");
+    toFile.type = "button";
+    toFile.textContent = "Save preset as JSON";
+    toFile.addEventListener("click", () => download(`${crvFileName(doc.props.name).replace(/\.crv$/, "") || "preset"}.json`, presets.presetToJson(doc), "application/json"));
+    const fromFile = document.createElement("button");
+    fromFile.type = "button";
+    fromFile.textContent = "Load preset JSON";
+    fromFile.addEventListener("click", () => $("file-preset").click());
+    files.append(toFile, fromFile);
+    body.append(files);
+    $("presets-status").textContent = status;
+  }
+  $("btn-presets").addEventListener("click", () => { renderPresets(); dlg.showModal(); });
+  $("btn-presets-close").addEventListener("click", () => dlg.close());
+  $("file-preset").addEventListener("change", async () => {
+    const f = $("file-preset").files[0];
+    $("file-preset").value = "";
+    if (!f) return;
+    if (f.size > 2_000_000) { $("presets-status").textContent = "That file is too large to be a preset."; $("presets-status").focus(); return; }
+    try {
+      importMessages = [];
+      setDoc(presets.presetFromJson(await f.text()));
+      dlg.close();
+    } catch (e) {
+      $("presets-status").textContent = `Couldn't load ${f.name}: ${e.message}`;
+      $("presets-status").focus();
+    }
+  });
+  window.addEventListener("pagehide", () => presets.autosave(lastJson));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") presets.autosave(lastJson); });
   $("btn-export").addEventListener("click", () => {
     const { text } = buildCrv(doc);
     if (text) download(crvFileName(doc.props.name), text);

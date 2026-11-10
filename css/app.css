@@ -91,3 +91,19 @@ thead th { position: sticky; top: 0; background: var(--panel2); }
 @media (max-width: 860px) {
   .layout { grid-template-columns: 1fr; }
 }
+
+.plot-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.plot-tools input[type="range"] { flex: 1; min-width: 140px; max-width: 320px; height: 40px; accent-color: var(--accent); }
+.plot-tools output { min-width: 5ch; font-variant-numeric: tabular-nums; }
+.plot .handle { fill: transparent; stroke: none; cursor: ns-resize; }
+.plot .handle-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; pointer-events: none; }
+.plot .handle:hover, .plot .handle:focus-visible { stroke: var(--focus); stroke-width: 3; outline: none; }
+.notice { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px; padding: 8px 12px; display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+.notice p { margin: 0; flex: 1; min-width: 200px; }
+.dropping .plot { outline: 3px dashed var(--accent); outline-offset: 4px; }
+dialog { background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 10px; max-width: 520px; width: calc(100% - 32px); }
+dialog::backdrop { background: rgba(0, 0, 0, 0.55); }
+dialog h3 { margin: 12px 0 6px; font-size: 0.9rem; }
+dialog ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+dialog li { display: flex; gap: 6px; align-items: center; }
+dialog li span { flex: 1; min-width: 0; overflow-wrap: anywhere; }

@@ -98,7 +98,7 @@ Parameters: `fc` (Hz), `type`, `slope` (dB/oct, nominal). `r = fc/f` for a high-
 
 ### 4.5 Defaults for a new document
 - **Layers:** `points` (`[[20,0],[20000,0]]`, on), `lfTilt` (3 dB/oct, pivot 1 kHz, off), `fullTilt` (off), `hfTilt` (off), `hpf` (off), `lpf` (off).
-- **Grid:** resample at 1/3 octave.
+- **Grid:** resample at 1/12 octave (119 points from 20 Hz to 20 kHz). Chosen by the user; the built-in presets that mirror the 1/3-octave reference files keep 1/3.
 
 ### 4.6 Normalise
 `normalise: { on, at }`. When on, subtract `total(at)` from every point. The default is `at: 1000`.
