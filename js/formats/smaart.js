@@ -28,7 +28,18 @@ export function smaartToPicker(color) {
 
 /** Remove characters Windows and macOS don't allow in file names. */
 export function sanitiseFileName(name) {
-  return String(name ?? "").replace(/[\\/:*?"<>|\x00-\x1f]/g, "").trim();
+  let s = String(name ?? "").replace(/[\\/:*?"<>|\x00-\x1f]/g, "");
+  const trimEnd = () => {
+    let prev;
+    do {
+      prev = s;
+      s = s.replace(/[\s.]+$/, "").replace(/\.crv$/i, "");
+    } while (s !== prev);
+  };
+  trimEnd();
+  s = s.replace(/^[\s.]+/, "");
+  trimEnd();
+  return s;
 }
 
 /** Download file name for a document, or "" if the name is empty after sanitising. */

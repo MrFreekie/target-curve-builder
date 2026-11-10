@@ -4,11 +4,78 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Target Curve Builder</title>
+  <meta name="description" content="Build, import and edit Smaart transfer function target curves (.crv).">
+  <link rel="stylesheet" href="css/app.css">
 </head>
 <body>
-  <main>
+  <header class="topbar">
     <h1>Target Curve Builder</h1>
-    <p>Coming soon: build and edit Smaart target curves (.crv) in the browser.</p>
-  </main>
+    <div class="actions">
+      <button type="button" id="btn-theme">Theme: Auto</button>
+      <button type="button" id="btn-new">New</button>
+      <button type="button" id="btn-export" class="primary">Export .crv</button>
+    </div>
+  </header>
+
+  <div class="layout">
+    <aside class="side" aria-label="Curve settings">
+      <section aria-labelledby="h-props">
+        <h2 id="h-props">File properties</h2>
+        <div class="field"><label for="p-name">Name</label><input id="p-name" type="text" autocomplete="off"></div>
+        <div class="field"><label for="p-color">Colour</label><input id="p-color" type="color"></div>
+        <div class="field"><label for="p-line">Line width</label>
+          <select id="p-line"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
+        </div>
+        <div class="field"><label for="p-show">Show in Smaart</label><input id="p-show" type="checkbox"></div>
+        <div class="field"><label for="p-tol">Tolerance (± dB)</label><input id="p-tol" type="text" inputmode="decimal" autocomplete="off"></div>
+        <div class="field"><label for="p-usetol">Use tolerance</label><input id="p-usetol" type="checkbox"></div>
+        <div class="field"><label for="p-offset">Offset (dB, optional)</label><input id="p-offset" type="text" inputmode="decimal" autocomplete="off" placeholder="none"></div>
+      </section>
+
+      <section aria-labelledby="h-layers">
+        <div class="row-head">
+          <h2 id="h-layers">Layers</h2>
+          <span class="add">
+            <label for="add-kind" class="sr-only">Layer type to add</label>
+            <select id="add-kind"></select>
+            <button type="button" id="btn-add">Add</button>
+          </span>
+        </div>
+        <ul id="layers" class="layers"></ul>
+      </section>
+
+      <section aria-labelledby="h-grid">
+        <h2 id="h-grid">Output grid</h2>
+        <fieldset id="grid-modes">
+          <legend class="sr-only">Output grid resolution</legend>
+        </fieldset>
+        <div class="field"><label for="n-on">Normalise</label><input id="n-on" type="checkbox"></div>
+        <div class="field"><label for="n-at">Normalise at (Hz)</label><input id="n-at" type="text" inputmode="decimal" autocomplete="off"></div>
+      </section>
+    </aside>
+
+    <main class="main">
+      <svg id="plot" class="plot" aria-describedby="points-table"><title>Target curve plot</title></svg>
+      <p class="note">Dashed curve line: Show in Smaart is off. Dashed grey line: the imported original.</p>
+      <section aria-labelledby="h-table">
+        <div class="row-head">
+          <h2 id="h-table">Exported points</h2>
+          <button type="button" id="btn-copy">Copy as text</button>
+        </div>
+        <div class="table-wrap">
+          <table id="points-table">
+            <caption class="sr-only">Frequency and level of every exported point</caption>
+            <thead><tr><th scope="col">Hz</th><th scope="col">dB</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </section>
+      <section class="status" aria-live="polite">
+        <ul id="validation"></ul>
+        <p class="note">TF target curves need a measurement-capable edition of Smaart 9.4 or later, or Smaart Data Modeler. Smaart RTA can't import them.</p>
+      </section>
+    </main>
+  </div>
+  <script type="module" src="js/app.js"></script>
 </body>
 </html>

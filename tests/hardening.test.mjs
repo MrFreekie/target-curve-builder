@@ -28,3 +28,16 @@ test("string slopes are accepted, on:0 disables, normalise.at defaults to 1000",
   const n = evaluate({ grid: {}, layers: [{ kind: "fullTilt", on: true, dbPerOct: 2, pivot: 500 }], normalise: { on: true } });
   assert.equal(n.find(([f]) => f === 1000)[1], 0);
 });
+
+import { crvFileName } from "../js/formats/smaart.js";
+test("crvFileName never doubles the extension or keeps stray dots/spaces", () => {
+  assert.equal(crvFileName("a.crv.crv"), "a.crv");
+  assert.equal(crvFileName("a.crv.crv.crv"), "a.crv");
+  assert.equal(crvFileName("x.crv."), "x.crv");
+  assert.equal(crvFileName("tilt.crv "), "tilt.crv");
+  assert.equal(crvFileName("x.crv .crv"), "x.crv");
+  assert.equal(crvFileName("  .crv  "), "");
+  assert.equal(crvFileName(".."), "");
+  assert.equal(crvFileName('a/b\c:*?"<>|'), "abc.crv");
+  assert.equal(crvFileName("LA 7dB 315"), "LA 7dB 315.crv");
+});
