@@ -18,5 +18,8 @@ First release. Build, import, edit and export Smaart transfer function target cu
 - Spectrum (RTA) curve export.
 - Other export formats, other filter types, share-by-URL, offline install.
 
-### Known open check
-- The colour order in `.crv` files (assumed AARRGGBB) is confirmed by loading `reference/manual/colour_test_green.crv` and `colour_test_blue.crv` in Smaart. See `docs/SMAART_NOTES.md`.
+### Verified in Smaart
+- Colour order is AARRGGBB: `ff00ff00` shows green and `ff0000ff` shows blue (`reference/manual/colour_test_*.crv`).
+
+### Still to confirm
+- Smaart's behaviour with dense (1/12 octave or finer) curves, `Offset` on import, and outside the first and last points. See `docs/SMAART_NOTES.md`.

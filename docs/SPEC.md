@@ -128,7 +128,7 @@ UseTolerance:<TAB>0
 
 - **Header order** is exactly as shown. `Offset:<TAB>x.xxxx` is appended after `UseTolerance` **only** when the user has set an offset.
 - **Line:** an integer from 1 to 5 (line thickness). The default is 2.
-- **Color:** 8 lowercase hex digits. **Assumed** to be AARRGGBB, which fits the user's red `ffff0000`. Alpha is `ff`. The colour picker gives `#rrggbb`, which is written as `ff` + `rrggbb`. ⚠️ This must be confirmed in Smaart with the two test files in §9 before release.
+- **Color:** 8 lowercase hex digits. **Assumed** to be AARRGGBB, which fits the user's red `ffff0000`. Alpha is `ff`. The colour picker gives `#rrggbb`, which is written as `ff` + `rrggbb`. Confirmed in Smaart with the two test files in §9 (green and blue shown correctly).
 - **Show:** `0` or `1` only.
 - **Tolerance:** written with 4 decimals. ±value dB is drawn as a shaded band.
 - **UseTolerance:** `0` or `1`. It isn't in the Rational Acoustics article, but Smaart writes it. Keep it.

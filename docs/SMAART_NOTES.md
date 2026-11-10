@@ -14,7 +14,7 @@ Findings about how Smaart handles `.crv` target curves. Keep this up to date.
 ## Observed in the user's files
 - **Header order:** `Line, Color, Show, Type, Tolerance, UseTolerance`. CRLF line endings. Values have 6 decimals.
 - **`UseTolerance`:** present in the user's files but not mentioned in the article.
-- **Colour:** `Color: ffff0000` draws red. AARRGGBB is assumed but **not yet confirmed**.
+- **Colour:** `Color: ffff0000` draws red. **Confirmed AARRGGBB** (2026-11-10): `ff00ff00` draws green and `ff0000ff` draws blue in Smaart.
 
 ## Colour-test procedure
 1. Generate the files (already in the repo): `node scripts/make_colour_tests.mjs` writes `reference/manual/colour_test_green.crv` (`Color: ff00ff00`, flat +6 dB) and `colour_test_blue.crv` (`Color: ff0000ff`, flat −6 dB).
@@ -23,7 +23,7 @@ Findings about how Smaart handles `.crv` target curves. Keep this up to date.
 4. Record the result in the checklist below.
 
 ## To confirm (manual test)
-- [ ] Load `reference/manual/colour_test_green.crv` (`ff00ff00`) and `colour_test_blue.crv` (`ff0000ff`) in Smaart. Expected: green and blue. Actual: ___
+- [x] Load `reference/manual/colour_test_green.crv` (`ff00ff00`) and `colour_test_blue.crv` (`ff0000ff`) in Smaart. Expected: green and blue. Actual: green and blue (confirmed by the user, 2026-11-10).
 - [ ] Does Smaart accept 1/24-octave (or denser) TF curves without lag? ___
 - [ ] Is `Offset` respected on import, and how does it combine with the curve data? ___
 - [ ] What does Smaart do outside the curve's first and last points (hold the end values, or not draw)? ___
