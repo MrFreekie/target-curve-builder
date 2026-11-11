@@ -12,7 +12,10 @@
 </head>
 <body>
   <header class="topbar">
-    <h1>Target Curve Builder</h1>
+    <div class="brand">
+      <h1>Target Curve Builder</h1>
+      <a class="bmc" href="https://www.buymeacoffee.com/fohengineer" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">🍺</span> Buy me a beer</a>
+    </div>
     <div class="actions">
       <button type="button" id="btn-undo" disabled title="Undo (Ctrl+Z)">Undo</button>
       <button type="button" id="btn-redo" disabled title="Redo (Shift+Ctrl+Z)">Redo</button>
@@ -31,10 +34,11 @@
       <section aria-labelledby="h-props">
         <h2 id="h-props">File properties</h2>
         <button type="button" id="btn-reset-import" class="wide" hidden>Reset to imported .crv</button>
-        <div class="field"><label for="p-name">Name</label><input id="p-name" type="text" autocomplete="off"></div>
-        <div class="suggest"><button type="button" id="btn-suggest"></button></div>
+        <div class="field name-field"><label for="p-name">Name</label>
+          <div class="name-row"><input id="p-name" type="text" autocomplete="off"><button type="button" id="btn-suggest"></button></div>
+        </div>
         <div class="field"><label for="p-color">Colour</label><input id="p-color" type="color"></div>
-        <div class="suggest"><button type="button" id="btn-random">Random colour (contrasts with the theme)</button></div>
+        <div class="suggest"><button type="button" id="btn-random">Random colour</button></div>
         <div class="field"><label for="p-line">Line width</label>
           <select id="p-line"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
         </div>
@@ -45,16 +49,17 @@
       </section>
 
       <section aria-labelledby="h-layers">
-        <div class="row-head">
-          <h2 id="h-layers">Layers</h2>
-          <span class="add">
+        <h2 id="h-layers">Layers</h2>
+        <div id="layer-tabs" class="tabs" role="tablist" aria-label="Layer groups"></div>
+        <div id="tab-panel" class="tab-panel" role="tabpanel">
+          <div id="group-head" class="group-head"></div>
+          <ul id="layers" class="layers"></ul>
+          <div class="add">
             <label for="add-kind" class="sr-only">Layer type to add</label>
             <select id="add-kind"></select>
-            <button type="button" id="btn-add">Add</button>
-          </span>
+            <button type="button" id="btn-add">Add layer</button>
+          </div>
         </div>
-        <div id="groups" class="groups" role="group" aria-label="Layer groups"></div>
-        <ul id="layers" class="layers"></ul>
       </section>
 
       <section aria-labelledby="h-grid">
@@ -109,10 +114,6 @@
       </section>
     </main>
   </div>
-  <footer class="footer">
-    <span>Free to use. If it saves you time:</span>
-    <a class="bmc" href="https://www.buymeacoffee.com/fohengineer" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">🍺</span> Buy me a beer</a>
-  </footer>
   <input type="file" id="file-import" accept=".crv,.txt,text/plain" hidden>
   <input type="file" id="file-preset" accept=".json,application/json" hidden>
   <dialog id="dlg-import" aria-labelledby="h-import">

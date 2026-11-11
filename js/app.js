@@ -450,6 +450,8 @@ function startApp() {
     // Which group the layer belongs to (SPEC §4.8): none means it is never hidden by a group.
     body.append(selectField("Group", [["0", "None"], ...(doc.groups ?? []).map((g, n) => [String(n + 1), g.name])], String(l.group ?? 0), (v) => {
       if (Number(v) > 0) l.group = Number(v); else delete l.group;
+      activeTab = tabOf(l); // follow the layer to the tab it now belongs to
+      renderGroups();
       renderLayers([l.id, "toggle"]);
       update();
     }));
@@ -474,10 +476,23 @@ function startApp() {
   const hiddenByGroup = (l) => !visibleLayers(doc).includes(l);
   const groupName = (n) => doc.groups?.[n - 1]?.name ?? "";
 
+  /** Which tab is open: 0 holds the layers with no group, 1 to 3 are the groups (a view setting, not saved). */
+  let activeTab = 0;
+  const tabOf = (l) => (Number.isInteger(l.group) && l.group >= 1 && l.group <= 3 ? l.group : 0);
+  const tabName = (n) => (n === 0 ? "Ungrouped" : doc.groups?.[n - 1]?.name ?? `Group ${n}`);
+
   function renderLayers(focus) {
     const ul = $("layers");
     ul.replaceChildren();
-    doc.layers.forEach((l, i) => {
+    const mine = doc.layers.filter((l) => tabOf(l) === activeTab);
+    if (!mine.length) {
+      const li = document.createElement("li");
+      li.className = "empty";
+      li.textContent = activeTab === 0 ? "No ungrouped layers. Use Add layer below." : `No layers in ${tabName(activeTab)} yet. Use Add layer below.`;
+      ul.append(li);
+    }
+    mine.forEach((l, pos) => {
+      const i = doc.layers.indexOf(l); // position in the whole list: used for the ghost colour
       const li = document.createElement("li");
       li.className = `layer${l.on ? "" : " off"}${hiddenByGroup(l) ? " grouphidden" : ""}`;
       li.dataset.id = l.id;
@@ -487,7 +502,7 @@ function startApp() {
       const on = document.createElement("input");
       on.type = "checkbox";
       on.checked = l.on;
-      const label = `${layerTitle(l)}, layer ${i + 1} of ${doc.layers.length}`;
+      const label = `${layerTitle(l)}, layer ${pos + 1} of ${mine.length}`;
       on.dataset.action = "on";
       on.setAttribute("aria-label", `${label}: on`);
       on.addEventListener("change", () => { l.on = on.checked; li.classList.toggle("off", !l.on); stripe(li, l, i); update(); });
@@ -508,24 +523,30 @@ function startApp() {
         b.addEventListener("click", fn);
         return b;
       };
-      const move = (d, action) => () => { const [x] = doc.layers.splice(i, 1); doc.layers.splice(i + d, 0, x); renderLayers([l.id, action]); update(); };
+      // moving swaps places with the neighbour in the same tab, so the order inside a tab is what you see
+      const move = (d, action) => () => {
+        const j = doc.layers.indexOf(mine[pos + d]);
+        [doc.layers[i], doc.layers[j]] = [doc.layers[j], doc.layers[i]];
+        renderLayers([l.id, action]);
+        update();
+      };
       const remove = () => {
-        const next = doc.layers[i + 1] ?? doc.layers[i - 1];
+        const next = mine[pos + 1] ?? mine[pos - 1];
         doc.layers.splice(i, 1);
         expanded.delete(l.id);
         renderLayers(next ? [next.id, "toggle"] : ["", "add"]);
         update();
       };
       head.append(on, title,
-        icon("↑", "up", "Move up", move(-1, "up"), i === 0),
-        icon("↓", "down", "Move down", move(1, "down"), i === doc.layers.length - 1),
+        icon("↑", "up", "Move up", move(-1, "up"), pos === 0),
+        icon("↓", "down", "Move down", move(1, "down"), pos === mine.length - 1),
         icon("✕", "del", "Delete", remove));
       li.append(head);
       if (expanded.has(l.id)) li.append(layerBody(l));
       ul.append(li);
     });
     refreshTitles();
-    updateGroupCounts();
+    renderTabs();
     if (focus) {
       const target = focus[1] === "add" ? $("add-kind")
         : document.querySelector(`#layers li[data-id="${focus[0]}"] [data-action="${focus[1]}"]:not(:disabled)`)
@@ -534,53 +555,95 @@ function startApp() {
     }
   }
 
-  // ---- layer groups: three named groups with independent show/hide (SPEC §4.8)
-  function renderGroups() {
-    const host = $("groups");
-    host.replaceChildren();
-    (doc.groups ?? []).forEach((g, n) => {
-      const row = document.createElement("div");
-      row.className = "group-row";
-      const name = document.createElement("input");
-      name.type = "text";
-      name.value = g.name;
-      name.maxLength = 24;
-      name.setAttribute("aria-label", `Name of group ${n + 1}`);
-      name.addEventListener("input", () => {
-        g.name = name.value.trim() ? name.value : `${"ABC"[n]}`;
-        refreshTitles();
-        update();
-      });
-      name.addEventListener("change", () => { renderGroups(); renderLayers(); });
-      const count = doc.layers.filter((l) => l.group === n + 1).length;
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.setAttribute("aria-pressed", String(g.on !== false));
-      btn.textContent = g.on !== false ? "Shown" : "Hidden";
-      btn.setAttribute("aria-label", `${g.name}, ${count} layer${count === 1 ? "" : "s"}: ${g.on !== false ? "shown. Press to hide" : "hidden. Press to show"}`);
-      btn.addEventListener("click", () => {
-        g.on = g.on === false;
-        renderGroups();
-        renderLayers();
-        update();
-      });
-      const cnt = document.createElement("span");
-      cnt.className = "group-count";
-      cnt.textContent = `${count} layer${count === 1 ? "" : "s"}`;
-      row.append(name, btn, cnt);
-      host.append(row);
-    });
+  // ---- layer tabs: Ungrouped plus three named groups with independent show/hide (SPEC 4.8)
+  function selectTab(n, { focusTab = false } = {}) {
+    activeTab = n;
+    renderGroups();
+    renderLayers();
+    if (focusTab) $(`tab-${n}`)?.focus();
   }
 
-  /** Refresh the "N layers" text and button labels of the group bar without rebuilding it. */
-  function updateGroupCounts() {
-    document.querySelectorAll("#groups .group-row").forEach((row, n) => {
-      const g = doc.groups?.[n];
-      if (!g) return;
-      const count = doc.layers.filter((l) => l.group === n + 1).length;
-      row.querySelector(".group-count").textContent = `${count} layer${count === 1 ? "" : "s"}`;
-      row.querySelector("button").setAttribute("aria-label", `${g.name}, ${count} layer${count === 1 ? "" : "s"}: ${g.on !== false ? "shown. Press to hide" : "hidden. Press to show"}`);
+  /** The tab strip. Built once, then updated in place so a focused tab keeps focus. */
+  function renderTabs() {
+    const host = $("layer-tabs");
+    if (host.children.length !== 4) {
+      host.replaceChildren();
+      for (let n = 0; n < 4; n++) {
+        const b = document.createElement("button");
+        b.type = "button";
+        b.id = `tab-${n}`;
+        b.className = "tab";
+        b.setAttribute("role", "tab");
+        b.setAttribute("aria-controls", "tab-panel");
+        b.append(Object.assign(document.createElement("span"), { className: "tab-name" }), Object.assign(document.createElement("span"), { className: "tab-count" }));
+        b.addEventListener("click", () => selectTab(n));
+        b.addEventListener("keydown", (ev) => {
+          const keys = { ArrowRight: (activeTab + 1) % 4, ArrowLeft: (activeTab + 3) % 4, Home: 0, End: 3 };
+          if (!(ev.key in keys)) return;
+          ev.preventDefault();
+          selectTab(keys[ev.key], { focusTab: true });
+        });
+        host.append(b);
+      }
+    }
+    for (let n = 0; n < 4; n++) {
+      const b = $(`tab-${n}`);
+      const count = doc.layers.filter((l) => tabOf(l) === n).length;
+      const hidden = n > 0 && doc.groups?.[n - 1]?.on === false;
+      b.querySelector(".tab-name").textContent = tabName(n);
+      b.querySelector(".tab-count").textContent = String(count);
+      b.classList.toggle("hiddengroup", hidden);
+      b.setAttribute("aria-selected", String(n === activeTab));
+      b.tabIndex = n === activeTab ? 0 : -1;
+      b.setAttribute("aria-label", `${tabName(n)}, ${count} layer${count === 1 ? "" : "s"}${hidden ? ", hidden" : ""}`);
+    }
+    $("tab-panel").setAttribute("aria-labelledby", `tab-${activeTab}`);
+    $("btn-add").setAttribute("aria-label", `Add layer to ${tabName(activeTab)}`);
+  }
+
+  /** The group's name box and Shown/Hidden button, at the top of its tab. */
+  function renderGroupHead() {
+    const host = $("group-head");
+    host.replaceChildren();
+    if (activeTab === 0) {
+      const note = document.createElement("p");
+      note.className = "note";
+      note.textContent = "Layers with no group are always on. Put a layer in a group tab to show or hide it with that group.";
+      host.append(note);
+      return;
+    }
+    const n = activeTab - 1;
+    const g = doc.groups[n];
+    const name = document.createElement("input");
+    name.type = "text";
+    name.value = g.name;
+    name.maxLength = 24;
+    name.setAttribute("aria-label", `Name of group ${n + 1}`);
+    name.addEventListener("input", () => {
+      g.name = name.value.trim() ? name.value : "ABC"[n];
+      renderTabs();
+      refreshTitles();
+      update();
     });
+    name.addEventListener("change", () => renderLayers());
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.setAttribute("aria-pressed", String(g.on !== false));
+    btn.textContent = g.on !== false ? "Shown" : "Hidden";
+    btn.setAttribute("aria-label", `${g.name}: ${g.on !== false ? "shown. Press to hide" : "hidden. Press to show"}`);
+    btn.addEventListener("click", () => {
+      g.on = g.on === false;
+      renderGroupHead();
+      renderLayers();
+      update();
+    });
+    host.append(name, btn);
+  }
+
+  /** The tab strip and the open tab's group controls. */
+  function renderGroups() {
+    renderTabs();
+    renderGroupHead();
   }
 
   function refreshTitles() {
@@ -691,7 +754,10 @@ function startApp() {
     ghostsOn = !ghostsOn;
     try { localStorage.setItem("tcb-ghosts", ghostsOn ? "1" : "0"); } catch { /* storage unavailable */ }
     applyGhostsUi();
-    document.querySelectorAll("#layers li").forEach((li, i) => stripe(li, doc.layers[i], i));
+    document.querySelectorAll("#layers li[data-id]").forEach((li) => {
+      const l = doc.layers.find((x) => x.id === li.dataset.id);
+      if (l) stripe(li, l, doc.layers.indexOf(l));
+    });
     update();
   });
   applyGhostsUi();
@@ -763,8 +829,9 @@ function startApp() {
     const name = suggestName(doc);
     const b = $("btn-suggest");
     const same = doc.props.name === name;
-    b.textContent = same ? `Name matches layers: ${name}` : `Use suggested name: ${name}`;
-    b.setAttribute("aria-label", same ? `The name already matches the layers: ${name}` : `Use suggested name ${name}`);
+    b.textContent = same ? "Name matches" : "Use suggestion";
+    b.title = same ? `The name already matches the layers: ${name}` : `Suggested name: ${name}`;
+    b.setAttribute("aria-label", same ? `The name already matches the layers: ${name}` : `Use the suggested name ${name}`);
     b.disabled = same;
     b.dataset.name = name;
   }
@@ -937,6 +1004,7 @@ function startApp() {
   }
   $("btn-add").addEventListener("click", () => {
     const l = newLayer($("add-kind").value);
+    if (activeTab > 0) l.group = activeTab; // a layer added in a group's tab belongs to that group
     doc.layers.push(l);
     expanded.add(l.id);
     renderLayers([l.id, "toggle"]);
@@ -1009,6 +1077,7 @@ function startApp() {
     try {
       const r = addImportedLayer(doc, p.text, p.name);
       doc = r.doc;
+      activeTab = 0;
       expanded.add(r.layerId);
       importMessages = [
         ...p.extra,
