@@ -90,8 +90,12 @@ export function createPlot(svg, callbacks = {}) {
       return [Math.floor((lo - 3) / 6) * 6, Math.ceil((hi + 3) / 6) * 6];
     }
     if (Number.isFinite(lo)) {
-      a = Math.min(a, Math.floor((lo - 3) / 6) * 6);
-      b = Math.max(b, Math.ceil((hi + 3) / 6) * 6);
+      // Centre the data: the window is at least 48 dB tall (the usual -24 to +24) and grows in steps of 6 dB, with the
+      // same space above the highest point and below the lowest. The Y offset slider then moves it from there.
+      const span = Math.max(48, Math.ceil((hi - lo + 6) / 6) * 6);
+      const mid = (lo + hi) / 2;
+      a = mid - span / 2;
+      b = mid + span / 2;
     }
     return [Math.max(a, -60), Math.min(b, 60)];
   }
@@ -123,7 +127,7 @@ export function createPlot(svg, callbacks = {}) {
   const path = (pts) => pts.map(([f, g], i) => `${i ? "L" : "M"}${xOf(f).toFixed(2)},${yOf(g).toFixed(2)}`).join(" ");
 
   /**
-   * @param {{points: number[][], original?: number[][]|null, yRange?: number|null, yOffset?: number, hidePoints?: boolean, fmin?: number, fmax?: number, ghosts?: {points: number[][], hue: number, title: string}[], extra?: (f: number) => string, color: string, line: number,
+   * @param {{points: number[][], original?: number[][]|null, template?: number[][]|null, templateName?: string, yRange?: number|null, yOffset?: number, hidePoints?: boolean, fmin?: number, fmax?: number, ghosts?: {points: number[][], hue: number, title: string}[], extra?: (f: number) => string, color: string, line: number,
    *          tolerance: number, useTolerance: boolean, show: boolean, description: string}} m
    */
   function render(m) {
@@ -133,6 +137,7 @@ export function createPlot(svg, callbacks = {}) {
     OCTAVES = Math.log2(FMAX / FMIN);
     const curves = [m.points];
     if (m.original) curves.push(m.original);
+    if (m.template) curves.push(m.template);
     if (!drag) {
       [yMin, yMax] = m.yRange ? [-m.yRange, m.yRange] : range(curves, m.wide);
       // View offset: slide the visible window up or down; axis labels stay true dB values.
@@ -152,6 +157,11 @@ export function createPlot(svg, callbacks = {}) {
     }
     if (m.original && m.original.length > 1) {
       g.append(el("path", { d: path(m.original), class: "original" }));
+    }
+    if (m.template && m.template.length > 1) {
+      const t = el("path", { d: path(m.template), class: "template" });
+      t.append(el("title", {}, m.templateName || "Reference trace"));
+      g.append(t);
     }
     const color = smaartToPicker(m.color);
     if (m.points.length > 1) {

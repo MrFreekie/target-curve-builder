@@ -10,9 +10,14 @@ import * as presets from "./presets.js";
 import { suggestName } from "./naming.js";
 import { randomContrastingColour } from "./colour.js";
 import { qToBw, bwToQ } from "./bandwidth.js";
-import { noteLabel, wavelengthLabel } from "./pitch.js";
+import { wavelengthLabel } from "./pitch.js";
+import { parseTrace, traceCurve, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT, MAX_TRACE_TEXT } from "./trace.js";
+import { encodeShare, decodeShare, LONG_LINK } from "./share.js";
 
 export { newDoc, newLayer };
+
+/** The two trims: box id, grid key and the default shown when the trim is off. */
+const TRIMS = [["trim-low", "trimLow", 20], ["trim-high", "trimHigh", 20000]];
 
 /** Layer-level problems the format validator can't see. */
 function layerIssues(doc) {
@@ -30,7 +35,7 @@ function layerIssues(doc) {
       if (l[key] !== undefined && l[key] !== null && !(l[key] > 0)) bad(`${name}: ${key} must be greater than 0 Hz.`);
     }
   }
-  if (doc.grid.mode === "simplified" && doc.grid.epsilon !== undefined && !(doc.grid.epsilon >= 0.001 && doc.grid.epsilon <= 12)) {
+  if ((doc.grid.simplify === true || doc.grid.mode === "simplified") && doc.grid.epsilon !== undefined && !(doc.grid.epsilon >= 0.001 && doc.grid.epsilon <= 12)) {
     bad("Breakpoints only: max error must be between 0.001 and 12 dB.");
   }
   const g = doc.grid;
@@ -686,14 +691,18 @@ function startApp() {
     $("p-usetol").checked = !!p.useTolerance;
     $("p-offset").value = p.offset === null ? "" : String(p.offset);
     $("g-eps").value = String(doc.grid.epsilon ?? 0.1);
-    $("trim-low").value = doc.grid.trimLow === undefined ? "" : String(doc.grid.trimLow);
-    $("trim-high").value = doc.grid.trimHigh === undefined ? "" : String(doc.grid.trimHigh);
+    // An unticked trim box still shows the default range ends (20 Hz and 20 kHz), or what was last typed in it.
+    for (const [id, key, def] of TRIMS) {
+      $(`${id}-on`).checked = doc.grid[key] !== undefined;
+      if (doc.grid[key] !== undefined) $(id).value = String(doc.grid[key]);
+      else if (!Number.isFinite(parseNum($(id).value))) $(id).value = String(def);
+    }
     $("n-on").checked = doc.normalise.on;
     $("n-at").value = String(doc.normalise.at);
     renderGridModes();
   }
 
-  const GRID_CHOICES = [["3", "1/3 octave"], ["1", "1/1 octave"], ["6", "1/6 octave"], ["12", "1/12 octave"], ["24", "1/24 octave"], ["original", "Keep original"], ["simplified", "Breakpoints only"]];
+  const GRID_CHOICES = [["3", "1/3 octave"], ["1", "1/1 octave"], ["6", "1/6 octave"], ["12", "1/12 octave"], ["24", "1/24 octave"], ["48", "1/48 octave"], ["original", "Keep original"]];
   function renderGridModes() {
     const host = $("grid-modes");
     host.querySelectorAll("label").forEach((n) => n.remove());
@@ -704,11 +713,9 @@ function startApp() {
       r.name = "grid";
       r.value = value;
       r.disabled = value === "original" && !doc.original;
-      r.checked = value === "original" || value === "simplified"
-        ? doc.grid.mode === value
-        : doc.grid.mode !== "original" && doc.grid.mode !== "simplified" && String(doc.grid.fraction) === value;
+      r.checked = value === "original" ? doc.grid.mode === "original" : doc.grid.mode !== "original" && String(doc.grid.fraction) === value;
       r.addEventListener("change", () => {
-        if (value === "original" || value === "simplified") doc.grid.mode = value;
+        if (value === "original") doc.grid.mode = "original";
         else { doc.grid.mode = "resample"; doc.grid.fraction = Number(value); }
         update();
       });
@@ -784,40 +791,19 @@ function startApp() {
   });
   applyGhostsUi();
 
-  // ---- note names and wavelength (343 m/s): shown in the hover readout and as table columns, never exported
-  let notesOn = false;
-  let waveOn = false;
-  try {
-    notesOn = localStorage.getItem("tcb-notes") === "1";
-    waveOn = localStorage.getItem("tcb-wave") === "1";
-  } catch { /* storage unavailable */ }
-  const applyPitchUi = () => {
-    $("btn-notes").setAttribute("aria-pressed", String(notesOn));
-    $("btn-wave").setAttribute("aria-pressed", String(waveOn));
-  };
-  for (const [id, key, flip] of [["btn-notes", "tcb-notes", () => { notesOn = !notesOn; return notesOn; }], ["btn-wave", "tcb-wave", () => { waveOn = !waveOn; return waveOn; }]]) {
-    $(id).addEventListener("click", () => {
-      const on = flip();
-      try { localStorage.setItem(key, on ? "1" : "0"); } catch { /* storage unavailable */ }
-      applyPitchUi();
-      update();
-    });
-  }
-  applyPitchUi();
-
   // ---- lines only: hide the point markers and drag handles on the plot (a view setting)
   let linesOnly = false;
   try { linesOnly = localStorage.getItem("tcb-lines") === "1"; } catch { /* storage unavailable */ }
-  const applyLinesUi = () => {
-    $("btn-lines").setAttribute("aria-pressed", String(!linesOnly)); // pressed means the points are shown
-  };
-  $("btn-lines").addEventListener("click", () => {
-    linesOnly = !linesOnly;
+  $("hide-points").checked = linesOnly;
+  $("hide-points").addEventListener("change", () => {
+    linesOnly = $("hide-points").checked;
     try { localStorage.setItem("tcb-lines", linesOnly ? "1" : "0"); } catch { /* storage unavailable */ }
-    applyLinesUi();
     update();
   });
-  applyLinesUi();
+  $("g-simplify").addEventListener("change", () => {
+    if ($("g-simplify").checked) doc.grid.simplify = true; else delete doc.grid.simplify;
+    update();
+  });
 
   let noticeSig = "";
   function renderNotice() {
@@ -858,8 +844,10 @@ function startApp() {
   function update() {
     track();
     renderSuggestion();
-    $("eps-field").hidden = doc.grid.mode !== "simplified";
+    $("eps-field").hidden = doc.grid.simplify !== true;
+    $("g-simplify").checked = doc.grid.simplify === true;
     $("btn-reset-import").hidden = !doc.original;
+    syncTraceUi();
     refreshTitles();
     renderNotice();
     undoUi();
@@ -867,7 +855,7 @@ function startApp() {
     let handles = [];
     const hl = pointsLayer();
     const hint = $("handle-hint");
-    if (linesOnly) hint.textContent = "Points are hidden (lines only). Press Show points to drag them.";
+    if (linesOnly) hint.textContent = "Points are hidden (lines only). Untick Hide points to drag them.";
     else if (!hl) hint.textContent = "Switch on a Points layer to drag points on the plot.";
     else if (hl.points.length > 200) hint.textContent = "This Points layer has more than 200 points, so drag handles are hidden. Edit values in the layer's table.";
     else hint.textContent = "Drag a point to change its level. Hold Shift to move its frequency too. With a point focused: Up/Down nudge, Left/Right switch point.";
@@ -881,9 +869,9 @@ function startApp() {
     plot.render({
       // The axis always shows the full 20 Hz to 20 kHz; only the curve is cropped by the trim.
       handles, wide: doc.props.format === "smaart-spectrum", yRange: doc.props.format === "smaart-spectrum" ? null : zoom, yOffset, hidePoints: linesOnly,
-      extra: notesOn || waveOn ? (f) => [notesOn ? noteLabel(f) : "", waveOn ? wavelengthLabel(f) : ""].filter(Boolean).join("  ") : null,
+      extra: wavelengthLabel, // the hover readout also shows the wavelength at 343 m/s; the points table and the export never do
       ghosts: ghostsOn ? layerGhosts(doc).map((g) => ({ points: g.points, hue: ghostHue(g.index), title: layerTitle(doc.layers[g.index]) })) : [],
-      points, original: doc.original, color: doc.props.color, line: Number(doc.props.line) || 2,
+      points, original: doc.original, template: doc.template && doc.template.show ? traceCurve(doc.template) : null, templateName: doc.template?.name, color: doc.props.color, line: Number(doc.props.line) || 2,
       tolerance: Number(doc.props.tolerance) || 0, useTolerance: !!doc.props.useTolerance, show: !!doc.props.show,
       description: points.length
         ? `Target curve ${doc.props.name}, ${points.length} points from ${fmt6(points[0][0])} Hz to ${fmt6(points.at(-1)[0])} Hz. The same values are in the table below.`
@@ -892,18 +880,9 @@ function startApp() {
     $("h-table").textContent = `Exported points (${points.length})`;
     const tbody = $("points-table").tBodies[0];
     const rows = document.createDocumentFragment();
-    // Optional extra columns (display only): the nearest note and the wavelength.
-    const head = $("points-table").tHead.rows[0];
-    head.replaceChildren();
-    for (const t of ["Hz", "dB", ...(notesOn ? ["Note"] : []), ...(waveOn ? ["Wavelength"] : [])]) {
-      const th = document.createElement("th");
-      th.scope = "col";
-      th.textContent = t;
-      head.append(th);
-    }
     for (const [f, g] of points) {
       const tr = document.createElement("tr");
-      for (const v of [fmt6(f), fmt6(g), ...(notesOn ? [noteLabel(f)] : []), ...(waveOn ? [wavelengthLabel(f)] : [])]) {
+      for (const v of [fmt6(f), fmt6(g)]) {
         const td = document.createElement("td");
         td.textContent = v;
         tr.append(td);
@@ -1010,8 +989,19 @@ function startApp() {
   bindNum("p-offset", (n) => { doc.props.offset = n; }, { optional: true });
   bindNum("n-at", (n) => { doc.normalise.at = n; });
   bindNum("g-eps", (n) => { doc.grid.epsilon = n; });
-  bindNum("trim-low", (n) => { if (n === null) delete doc.grid.trimLow; else doc.grid.trimLow = n; }, { optional: true });
-  bindNum("trim-high", (n) => { if (n === null) delete doc.grid.trimHigh; else doc.grid.trimHigh = n; }, { optional: true });
+  // Each trim has a tick box: ticked, the number in the box is the trim; unticked, there is no trim.
+  for (const [id, key, def] of TRIMS) {
+    bindNum(id, (n) => { doc.grid[key] = n; $(`${id}-on`).checked = true; }); // typing a number switches the trim on
+    $(`${id}-on`).addEventListener("change", () => {
+      if (!$(`${id}-on`).checked) delete doc.grid[key];
+      else {
+        const n = parseNum($(id).value);
+        doc.grid[key] = Number.isFinite(n) ? n : def;
+        if (!Number.isFinite(n)) $(id).value = String(def);
+      }
+      update();
+    });
+  }
   $("n-on").addEventListener("change", () => { doc.normalise.on = $("n-on").checked; update(); });
 
   // ---- add layer
@@ -1220,6 +1210,98 @@ function startApp() {
   });
   window.addEventListener("pagehide", () => presets.autosave(lastJson));
   document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") presets.autosave(lastJson); });
+  // ---- reference trace (SPEC §10): a curve drawn behind the target, never exported
+  for (const n of TRACE_SMOOTHINGS) {
+    const o = document.createElement("option");
+    o.value = String(n);
+    o.textContent = n === 0 ? "Off" : `1/${n} octave`;
+    $("tr-smooth").append(o);
+  }
+  /** Copy the trace settings into the controls, unless a control is being typed in. */
+  function syncTraceUi() {
+    const t = doc.template;
+    $("trace-ctl").hidden = !t;
+    $("btn-trace").textContent = t ? "Replace trace…" : "Import trace…";
+    if (!t) return;
+    $("trace-info").textContent = `${t.name || "Trace"}: ${t.points.length} points, ${t.points[0][0]} Hz to ${t.points.at(-1)[0]} Hz.`;
+    $("tr-show").checked = t.show;
+    $("tr-norm").checked = t.normalise;
+    $("tr-smooth").value = String(t.smooth);
+    if (document.activeElement !== $("tr-offset")) $("tr-offset").value = String(t.offset);
+  }
+  $("btn-trace").addEventListener("click", () => $("file-trace").click());
+  $("file-trace").addEventListener("change", async () => {
+    const file = $("file-trace").files[0];
+    $("file-trace").value = "";
+    if (!file) return;
+    try {
+      if (file.size > MAX_TRACE_TEXT) throw new Error("That file is too large to be a trace.");
+      const r = parseTrace(await file.text());
+      doc.template = { name: file.name.replace(/\.[^.]*$/, "").slice(0, 100), points: r.points, offset: 0, smooth: 0, normalise: false, show: true };
+      importMessages = [`Trace ${file.name}: ${r.points.length} points read.`, ...r.warnings];
+    } catch (e) {
+      importMessages = [`Couldn't read ${file.name} as a trace: ${e.message}`];
+    }
+    noticeSig = "";
+    update();
+  });
+  $("tr-show").addEventListener("change", () => { if (doc.template) { doc.template.show = $("tr-show").checked; update(); } });
+  $("tr-norm").addEventListener("change", () => { if (doc.template) { doc.template.normalise = $("tr-norm").checked; update(); } });
+  $("tr-smooth").addEventListener("change", () => { if (doc.template) { doc.template.smooth = Number($("tr-smooth").value); update(); } });
+  $("tr-offset").addEventListener("input", () => {
+    const v = parseNum($("tr-offset").value);
+    if (doc.template && Number.isFinite(v) && Math.abs(v) <= TRACE_OFFSET_LIMIT) { doc.template.offset = v; update(); }
+  });
+  $("tr-remove").addEventListener("click", () => { delete doc.template; update(); $("btn-trace").focus(); });
+  $("tr-layer").addEventListener("click", () => {
+    if (!doc.template) return;
+    const l = newLayer("points");
+    l.points = traceCurve(doc.template);
+    l.label = doc.template.name || "Trace";
+    l.group = activeTab;
+    doc.layers.push(l);
+    expanded.add(l.id);
+    importMessages = [`Added the trace as a Points layer (${l.points.length} points), with its offset and smoothing applied.`];
+    noticeSig = "";
+    refreshAll();
+  });
+
+  // ---- shareable link (SPEC §11)
+  $("btn-share").addEventListener("click", async () => {
+    const note = $("share-note");
+    try {
+      const url = `${location.origin}${location.pathname}#d=${await encodeShare(doc)}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        note.textContent = `Link copied (${url.length} characters).`;
+      } catch {
+        // no clipboard permission: put the link in the address bar so it can be copied from there
+        history.replaceState(null, "", `#d=${url.split("#d=")[1]}`);
+        note.textContent = "Couldn't use the clipboard, so the link is now in the address bar: copy it from there.";
+      }
+      if (url.length > LONG_LINK) note.textContent += " It is long, and some chat and mail apps may cut it off.";
+    } catch (e) {
+      note.textContent = `Couldn't make a link: ${e.message}`;
+    }
+  });
+  // a link opened from elsewhere loads its curve, then clears the address so a reload keeps your own edits
+  (async () => {
+    const m = /^#d=(.+)$/.exec(location.hash);
+    if (!m) return;
+    try {
+      const shared = await decodeShare(m[1]);
+      history.replaceState(null, "", location.pathname + location.search);
+      importMessages = ["Opened a shared curve from a link."];
+      noticeSig = "";
+      setDoc(shared);
+    } catch (e) {
+      history.replaceState(null, "", location.pathname + location.search);
+      importMessages = [`Couldn't open that link: ${e.message}`];
+      noticeSig = "";
+      renderNotice();
+    }
+  })();
+
   $("btn-export").addEventListener("click", () => {
     const { text } = buildCrv(doc, exportFormat);
     const adapter = getAdapter(exportFormat);

@@ -106,7 +106,7 @@ test("export works through buildCrv, validates epsilon, and survives loadDoc", (
   assert.equal(buildCrv(d).text, null);
   d.grid.epsilon = 0.25;
   const back = loadDoc(JSON.parse(JSON.stringify(d)));
-  assert.equal(back.grid.mode, "simplified");
+  assert.deepEqual([back.grid.mode, back.grid.simplify, back.grid.fraction], ["resample", true, 48], "the older simplified mode loads as breakpoints only on the 1/48 grid");
   assert.equal(back.grid.epsilon, 0.25);
   assert.equal(loadDoc({ ...JSON.parse(JSON.stringify(d)), grid: { mode: "simplified", epsilon: 1e9 } }).grid.epsilon, undefined);
 });

@@ -1,9 +1,10 @@
 // Format adapter registry (docs/SPEC.md §6). Add a format by adding one adapter here.
 import { smaartTf, smaartSpectrum } from "./smaart.js";
 import { smaartAscii } from "./smaart-ascii.js";
+import { plainText } from "./plain-text.js";
 
 /** All adapters, in the order they are tried by detect(). */
-export const ADAPTERS = [smaartTf, smaartSpectrum, smaartAscii];
+export const ADAPTERS = [smaartTf, smaartSpectrum, smaartAscii, plainText];
 
 /** Look up an adapter by id, or undefined. */
 export function getAdapter(id) {

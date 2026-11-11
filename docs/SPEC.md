@@ -20,7 +20,7 @@ The maths in this spec is implemented independently in `reference/curve_ref.py`.
 ### Not in v1 (design for, don't build)
 - **Batch export:** explicitly out of scope. Do not add it.
 - **Spectrum (RTA) target curves:** export (`Band` header) comes in milestone 5. In v1, importing a spectrum file must work for viewing, with a notice that export is TF-only.
-- **Other export formats:** for example REW. Add these through the format adapter interface in §6. (Added after v1.0.0: Smaart ASCII trace `.txt`, write only. See `docs/SMAART_NOTES.md`.)
+- **Other export formats:** for example REW. Add these through the format adapter interface in §6. (Added after v1.0.0: a plain text `.txt` of Hz and dB, tab separated, Hz to 3 decimals and dB to 2, write only; and Smaart ASCII trace `.txt`, write only. See `docs/SMAART_NOTES.md`.)
 - **More filter types:** for example Bessel or custom orders. Add these through the filter registry in §4.4.
 - **Share-by-URL and offline PWA.**
 
@@ -61,9 +61,9 @@ The snapping keeps the steps clean: on a 3 dB/oct tilt, 63 Hz is **exactly** +12
 ### 3.3 Keep-original grid (`grid.mode = "original"`)
 Output frequencies are exactly the imported file's frequencies, in the same order. All layers are evaluated at those frequencies. This is the default after import, so that importing a file and exporting it unchanged reproduces it.
 
-### 3.4 Breakpoints only (`grid.mode = "simplified"`)
-Added after v1.0.0. A `.crv` need not list every value, because Smaart draws a straight line between two points. This mode exports only the points needed to reproduce the curve within `grid.epsilon` dB (default 0.1, allowed 0.001 to 12).
-- **Dense curve:** evaluate on a 1/48-octave grid from `fmin` to `fmax` plus `fmin`, `fmax` and every layer corner (point frequencies; `pivot`, `corner`, `floor` and `fc` of enabled layers). A grid frequency with the same `pos()` as a corner, or within 1e-6 relative of one, is dropped (decided from the exact grid frequency, before rounding), so the corner keeps the frequency the user typed (62.5 Hz and 63 Hz are both -4 octaves). Corners are merged only when equal after rounding to 6 decimals.
+### 3.4 Breakpoints only (`grid.simplify = true`)
+Added after v1.0.0. It is a tick box in the Output grid section and works with the chosen resolution: the candidate points are the resample grid of 1/`grid.fraction` octave (1, 3, 6, 12, 24 or 48), or the imported points with the Keep-original grid, plus `fmin`, `fmax` and every layer corner. The older `grid.mode = "simplified"` is the same thing on the 1/48-octave grid and loads as `mode: "resample"`, `fraction: 48`, `simplify: true`. The description below says "1/48-octave grid" for that case. A `.crv` need not list every value, because Smaart draws a straight line between two points. This mode exports only the points needed to reproduce the curve within `grid.epsilon` dB (default 0.1, allowed 0.001 to 12).
+- **Dense curve:** evaluate on the candidate grid (1/48 octave for the older mode) from `fmin` to `fmax` plus `fmin`, `fmax` and every layer corner (point frequencies; `pivot`, `corner`, `floor` and `fc` of enabled layers). A grid frequency with the same `pos()` as a corner, or within 1e-6 relative of one, is dropped (decided from the exact grid frequency, before rounding), so the corner keeps the frequency the user typed (62.5 Hz and 63 Hz are both -4 octaves). Corners are merged only when equal after rounding to 6 decimals.
 - **Normalise** is applied to the dense curve, then the curve is reduced, then values are rounded (§4.7).
 - **Reduce (Ramer-Douglas-Peucker):** always keep the first and last points. Between two kept points, if the largest vertical distance in dB from a point to the straight line between them, drawn against `pos(f)`, is more than `epsilon` minus 1e-6, keep that point and split there. (The 1 µdB margin keeps the guarantee true after rounding to 6 decimals.) An `epsilon` outside 0.001 to 12 counts as the default 0.1. `fmin` must be at least 1 Hz.
 - **Guarantee:** straight lines through the exported points, against `pos(f)`, stay within `epsilon` dB of the dense curve at every dense point.
@@ -71,6 +71,7 @@ Added after v1.0.0. A `.crv` need not list every value, because Smaart draws a s
 
 ### 3.5 Trim (`grid.trimLow`, `grid.trimHigh`)
 Added after v1.0.0. Optional limits that crop the curve and the exported points (not the plot axis, see below). Both are numbers from 1 to 100000 Hz and are absent by default; if both are given and `trimLow >= trimHigh` neither is kept. The **effective range** is `[trimLow ?? fmin, trimHigh ?? fmax]` (default 20 Hz to 20 kHz).
+- The trim has a tick box beside each value in the UI; a ticked box sets the value and an unticked box leaves no trim. An unticked box still shows 20 Hz (low) or 20 kHz (high) as a starting value, and typing a number ticks it. The trims are off by default so an untouched import still exports byte for byte.
 - **Resample and simplified grids** are built over the effective range (§3.2, §3.4), so a trim outside `fmin`/`fmax` widens the grid. For the simplified grid the first and last points are exactly the range ends.
 - **Keep-original grid** drops imported points outside the range, edges included, and only when a trim is set; with no trim the imported frequencies are used unchanged, so an untouched import still exports byte for byte (§5.3). Values are not changed, only fewer points are written.
 - `evaluate(doc, freqs)` with explicit frequencies is never trimmed.
@@ -189,6 +190,8 @@ Round values to 6 decimal places, then add `+0.0` so the file never contains `-0
 
 ## 5. Smaart `.crv` format
 
+The writer rules in this section (6-decimal values, tabs, CRLF, no `-0.000000`) apply to the Smaart `.crv` files. The Smaart ASCII `.txt` uses 2 decimals for dB and the plain text `.txt` uses 3 decimals for Hz and 2 for dB (§6); both still never write a negative zero.
+
 Source: Rational Acoustics support, "How to Create and Import Target Curve Files", plus the user's own files in `reference/samples/`.
 
 ### 5.1 Transfer function (TF) curve. This is what v1 writes.
@@ -303,7 +306,7 @@ v1 adapters are `smaart-tf` (read and write) and `smaart-spectrum` (read only). 
 ```
 
 - **Live updates:** changing any control updates the plot and table immediately.
-- **Note names and wavelength:** two independent view toggles (off by default, display only, never exported). Note: the nearest equal-tempered note in scientific pitch notation with A4 = 440 Hz (`midi = 69 + 12 log2(f/440)`, middle C is C4), with the distance in whole cents when it rounds to a non-zero value, for example `B1 +35¢`. Wavelength: `343 / f` metres (speed of sound 343 m/s), shown to 3 significant figures in m from 1 m, cm from 1 cm, otherwise mm. They are appended to the hover readout and added as columns to the points table.
+- **Wavelength in the hover readout:** the readout over the plot also shows the wavelength, `343 / f` metres (speed of sound 343 m/s), to 3 significant figures in m from 1 m, cm from 1 cm, otherwise mm. Display only: it is not in the points table and never exported. (Note names were tried and removed.)
 - **Layer tabs:** the Layers box has three tabs, one per group (§4.8), each showing its layer count. Beside each tab is an eye button that shows or hides that group's layers (the same as the Show layers toggle in the tab); a hidden group's tab is shown in italics. The open tab lists only its own layers, with its **Add layer** control below them (a layer added in a group's tab joins that group), and each tab starts with the group's name box and its **Show layers** toggle. Moving a layer up or down swaps places with its neighbour in the same tab. The tabs follow the usual tab keys (Left, Right, Home, End). The open tab is a view setting and is not saved.
 - **Layer ghosts:** a global toggle (a view setting, off by default) draws the contribution of each enabled layer on its own (including its invert, excluding normalise) as a faint coloured line over the full 20 Hz to 20 kHz, behind the curve, evaluated on the dense grid of §3.4. Each ghost has a matching colour stripe on its layer row and the layer title as a tooltip.
 - **Layers:** each layer row has an on/off switch, expandable controls, delete and reorder. Order doesn't change the sum but does help readability.
@@ -324,3 +327,13 @@ v1 adapters are `smaart-tf` (read and write) and `smaart-spectrum` (read only). 
 5. **Colour test (manual, in Smaart):** export `colour_test_green.crv` (`ff00ff00`) and `colour_test_blue.crv` (`ff0000ff`). Confirm Smaart shows green and blue, and record the result in `docs/SMAART_NOTES.md`. If they come out swapped, fix the colour mapping in the adapter and its tests.
 6. **Downloads:** the downloaded file name ends in `.crv` in Chrome, Safari and Firefox.
 7. **Deployment:** the site works from the GitHub Pages URL and the CI workflow is green.
+
+## 10. Reference trace (added after v1.0.0)
+A document may carry one reference trace, `template`: `{ name, points: [[hz, db], ...], offset, smooth, normalise, show }`. It is drawn behind the target, in green, for comparison. It is **never exported** and never changes the target, the grid, the validation or the name suggestion. It is saved with the document and covered by Undo.
+- **Reading:** a Smaart `.crv` (target or spectrum) is read as that; any other text is read line by line, taking the first two numbers on a line as Hz and dB (tab, space, comma or semicolon separated). Lines that don't start with two numbers (headers, `*` or `#` comments) are skipped; non-positive frequencies are dropped; the points are sorted and repeated frequencies dropped. At least 2 points are needed. A trace of more than 1200 points (an FFT export) is averaged into 1/48-octave bins on import. A file over 5 MB is refused.
+- **Display** (`traceCurve`): the smoothed curve, then, when `normalise` is on and the trace covers 1 kHz, shifted so it reads 0 dB at 1 kHz, then plus `offset` (so a normalised trace reads exactly the offset at 1 kHz). `offset` is -60 to +60 dB. `smooth` is 0 (off) or 1/N octave with N in 1, 3, 6, 12, 24, 48: at each of the trace's own frequencies, the exact average of the dB values over a window 1/N octave wide centred there, taking the trace as straight lines between its points against log frequency and flat beyond its ends.
+- **Add as a layer** turns the displayed curve (offset, smoothing and normalise applied) into a Points layer in the open group, so it can be used as a starting point for a target.
+- `loadDoc` keeps a trace only if its points are valid (2 to 1200, positive frequencies), cleans the values and drops it otherwise. A document with a trace is not "blank" (§8, import).
+
+## 11. Shareable links (added after v1.0.0)
+**Copy link** puts the document in the page address: `#d=` followed by base64url of the raw-deflate compressed JSON `{ "v": 1, "doc": <document> }`. Nothing is sent anywhere. The imported original, its header and any reference trace are left out, and the Keep-original grid becomes a resample grid, because those can be large. Opening a link validates it through `loadDoc` like a saved file, then clears the address so a reload keeps your own edits. A link over 200 000 characters, one that unpacks to over 2 MB, one that is not base64url, or one that fails validation is refused with a readable message. Links over about 2000 characters get a warning that chat and mail apps may cut them off.

@@ -9,16 +9,18 @@ TF target curves need a measurement-capable edition of **Smaart 9.4 or later**, 
 ## What it does
 - **Layers, summed in dB:** points, full-spectrum tilt, LF tilt (with an optional floor), HF tilt, high-pass and low-pass filters (Butterworth and Linkwitz-Riley), a gain offset, low and high **shelves** (± dB below or above a corner, so a low shelf is the sub "haystack"), a **bell** (peak, notch or band-stop, width as Q or bandwidth in octaves), a **hill** (smooth bump), a **Mesa-style** asymmetric filter (different slope on each side), and resonant 2nd-order filters. Filter types are Butterworth, Linkwitz-Riley (up to 96 dB/oct), Bessel and Chebyshev. Each layer can be switched on or off, edited, reordered or deleted.
 - **Live plot:** log frequency axis from 20 Hz to 20 kHz, the Smaart tolerance band, a hover readout, and a zoom from ±15 to ±40 dB (or auto), and a Y offset of ±20 dB to slide the view up or down.
-- **Note names and wavelength:** two toggles add the nearest musical note (with cents) and the wavelength at 343 m/s to the hover readout and the points table.
+- **Wavelength:** the hover readout also shows the wavelength at 343 m/s. It is display only and never in the exported points.
 - **Layer groups:** the Layers box has tabs for three renamable groups (A, B and C; new layers start in A), each with its own Add layer button and an independent show/hide. Hide a group to leave its layers out of the plot and the export.
 - **Layer ghosts:** one toggle shows what each layer contributes on its own, as faint coloured lines behind the curve (colour-matched to the layer list).
 - **Edit points on the plot:** drag a point up or down to change its level. Hold Shift to move its frequency as well (snaps to 1/24 octave). With a point focused, use Up/Down to nudge it and Left/Right to switch point.
 - **Import:** drop a `.crv` anywhere on the page, or use **Import .crv**. If a curve is already open you choose **Replace** or **Add as a layer** (the file's points become a new Points layer that sums with your other layers). The original stays on the plot as a dashed grey line. Spectrum curves can be viewed and converted to TF.
+- **Reference trace:** import a measurement (Smaart `.crv`, or any text with Hz and dB on each line) to draw behind your target, with an offset, fractional-octave smoothing and a 0 dB at 1 kHz option. It is never exported, and can be turned into a Points layer.
+- **Share:** Copy link puts the whole curve in the page address. Nothing is uploaded.
 - **Output grid:** with optional low and high trim to crop the curve and the exported points to a frequency range (the graph axis stays full). 1/12 octave by default, or 1/1, 1/3, 1/6, 1/24, keep the imported file's own frequencies, or **Breakpoints only**: just the points needed to stay within a chosen dB error (Smaart draws straight lines between points).
 - **Undo and redo:** Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z, at least 50 steps. Your work is autosaved in the browser.
 - **Name suggestion:** one click names the curve from its layers, for example `Tilt_3dBoct_1000Hz_HPF32_LR48`.
 - **Presets:** save curves in the browser, or as JSON files you can share. Built-in presets include A and C weighting (and inverses), RIAA, FM pre-emphasis, and the SMPTE ST 202:2010 cinema X-curve for small, medium and large theatres. Sources are in `docs/REFERENCE_CURVES.md`.
-- **Export:** one file at a time, as a Smaart target curve (`.crv`) or a Smaart ASCII trace (`.txt`: Hz, dB, phase 0, coherence 1). The `.crv` is written with tabs only, 6-decimal values and CRLF line endings, as Smaart expects. An unchanged import exports byte for byte as it came in.
+- **Export:** one file at a time, as a Smaart target curve (`.crv`) a Smaart ASCII trace (`.txt`: Hz, dB, phase 0, coherence 1) or plain text (`.txt`: Hz and dB, tab separated, for REW, HouseCurve and spreadsheets). The `.crv` is written with tabs only, 6-decimal values and CRLF line endings, as Smaart expects. An unchanged import exports byte for byte as it came in.
 
 ## How to use it
 1. Open the live site. Start from a preset, a new curve, or **Import .crv**.

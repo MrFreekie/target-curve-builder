@@ -66,15 +66,39 @@
 
       <section aria-labelledby="h-grid">
         <h2 id="h-grid">Output grid</h2>
-        <button type="button" id="btn-lines" aria-pressed="true" class="wide toggle">Points on plot</button>
+        <div class="field"><label for="hide-points">Hide points (lines only)</label><input id="hide-points" type="checkbox"></div>
         <fieldset id="grid-modes">
           <legend class="sr-only">Output grid resolution</legend>
         </fieldset>
+        <div class="field"><label for="g-simplify">Breakpoints only</label><input id="g-simplify" type="checkbox"></div>
         <div class="field" id="eps-field" hidden><label for="g-eps">Max error (dB)</label><input id="g-eps" type="text" inputmode="decimal" autocomplete="off"></div>
-        <div class="field"><label for="trim-low">Low trim (Hz)</label><input id="trim-low" type="text" inputmode="decimal" autocomplete="off" placeholder="none"></div>
-        <div class="field"><label for="trim-high">High trim (Hz)</label><input id="trim-high" type="text" inputmode="decimal" autocomplete="off" placeholder="none"></div>
-        <div class="field"><label for="n-on">Normalise</label><input id="n-on" type="checkbox"></div>
-        <div class="field"><label for="n-at">Normalise at (Hz)</label><input id="n-at" type="text" inputmode="decimal" autocomplete="off"></div>
+        <div class="field"><label for="trim-low">Low trim (Hz)</label>
+          <div class="check-row"><input id="trim-low-on" type="checkbox" aria-label="Use the low trim"><input id="trim-low" type="text" inputmode="decimal" autocomplete="off"></div></div>
+        <div class="field"><label for="trim-high">High trim (Hz)</label>
+          <div class="check-row"><input id="trim-high-on" type="checkbox" aria-label="Use the high trim"><input id="trim-high" type="text" inputmode="decimal" autocomplete="off"></div></div>
+        <div class="field"><label for="n-at">Normalise at (Hz)</label>
+          <div class="check-row"><input id="n-on" type="checkbox" aria-label="Normalise"><input id="n-at" type="text" inputmode="decimal" autocomplete="off"></div></div>
+      </section>
+
+      <section aria-labelledby="h-trace">
+        <h2 id="h-trace">Reference trace</h2>
+        <p class="note">Import a measurement or any curve to draw it behind your target. It is never exported.</p>
+        <button type="button" id="btn-trace" class="wide">Import trace…</button>
+        <div id="trace-ctl" hidden>
+          <p class="note" id="trace-info"></p>
+          <div class="field"><label for="tr-show">Show trace</label><input id="tr-show" type="checkbox"></div>
+          <div class="field"><label for="tr-offset">Offset (dB)</label><input id="tr-offset" type="text" inputmode="decimal" autocomplete="off"></div>
+          <div class="field"><label for="tr-smooth">Smoothing</label><select id="tr-smooth"></select></div>
+          <div class="field"><label for="tr-norm">0 dB at 1 kHz</label><input id="tr-norm" type="checkbox"></div>
+          <button type="button" id="tr-layer" class="wide">Add as a layer</button>
+          <button type="button" id="tr-remove" class="wide">Remove trace</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="h-share">
+        <h2 id="h-share">Share</h2>
+        <button type="button" id="btn-share" class="wide">Copy link to this curve</button>
+        <p class="note" id="share-note">The link holds your curve in the address. Nothing is uploaded.</p>
       </section>
     </aside>
 
@@ -90,8 +114,6 @@
         <output id="yoff-val" for="yoff">0 dB</output>
         <button type="button" id="yoff-reset">Centre</button>
         <button type="button" id="btn-ghosts" class="toggle" aria-pressed="false">Layer ghosts</button>
-        <button type="button" id="btn-notes" class="toggle" aria-pressed="false">Note names</button>
-        <button type="button" id="btn-wave" class="toggle" aria-pressed="false" title="Wavelength = 343 m/s divided by frequency">Wavelength</button>
       </div>
       <div class="plot-scroll"><svg id="plot" class="plot" aria-describedby="points-table"><title>Target curve plot</title></svg></div>
       <p class="note" id="handle-hint"></p>
@@ -117,6 +139,7 @@
     </main>
   </div>
   <input type="file" id="file-import" accept=".crv,.txt,text/plain" hidden>
+  <input type="file" id="file-trace" accept=".crv,.txt,.csv,.dat,text/plain" hidden>
   <input type="file" id="file-preset" accept=".json,application/json" hidden>
   <dialog id="dlg-import" aria-labelledby="h-import">
     <h2 id="h-import">Import <span id="imp-name"></span></h2>

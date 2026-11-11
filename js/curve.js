@@ -186,54 +186,64 @@ export function simplify(points, epsilon) {
 }
 
 /**
- * Dense frequency list used before simplifying: a 1/48-octave grid plus fmin, fmax and every layer corner.
+ * Candidate frequencies for "breakpoints only": the resample grid of 1/`fraction` octave (default 1/48, the densest)
+ * plus fmin, fmax and every layer corner.
  * @param {{grid?: object, layers: object[]}} doc
+ * @param {number} [fraction] 1, 3, 6, 12, 24 or 48.
  * @returns {number[]}
  */
-export function denseGrid(doc) {
+export function denseGrid(doc, fraction = 48) {
+  const n = Number(fraction);
+  if (![1, 3, 6, 12, 24, 48].includes(n)) throw new RangeError(`Unsupported grid fraction ${fraction}`);
   const g = doc.grid ?? {};
   const fmin = Number(g.fmin ?? 20);
   const fmax = Number(g.fmax ?? 20000);
   // Corners, deduplicated only when they are exactly the same after rounding to 6 decimals.
   const keys = [...new Set([fmin, fmax, ...keyFrequencies(doc.layers).filter((f) => f >= fmin && f <= fmax)].map(round6))];
   const keyPos = keys.map(pos);
-  // 1/48-octave grid from the exact (unrounded) frequencies. A grid point is dropped when a corner sits at
-  // the same octave position (62.5 Hz and 63 Hz are both -4 octaves) or within 1e-6 relative of it, so the
-  // corner keeps the frequency the user typed. The comparison is in grid-index space so that 6-decimal
+  // The grid from the exact (unrounded) frequencies; 1/1 and 1/3 use the nominal labels. A grid point is dropped when
+  // a corner sits at the same octave position (62.5 Hz and 63 Hz are both -4 octaves) or within 1e-6 relative of it,
+  // so the corner keeps the frequency the user typed. The comparison is in grid-index space so that 6-decimal
   // rounding of the grid frequency can't make a twin look different.
   const grid = [];
-  for (let k = Math.floor(48 * Math.log2(fmin / 1000)) - 1; ; k++) {
-    const f = 1000 * 2 ** (k / 48);
-    if (f > fmax * (1 + 1e-9)) break;
-    if (f < fmin * (1 - 1e-9)) continue;
-    const rounded = round6(f);
-    if (keys.some((key, i) => Math.abs(48 * keyPos[i] - k) < 1e-6 || Math.abs(key - f) <= 1e-6 * f)) continue;
-    grid.push(rounded);
+  const twin = (index, f) => keys.some((key, i) => Math.abs(n * keyPos[i] - index) < 1e-6 || Math.abs(key - f) <= 1e-6 * f);
+  if (n === 1 || n === 3) {
+    for (const f of makeGrid({ fraction: n, fmin, fmax })) if (!twin(n * pos(f), f)) grid.push(f);
+  } else {
+    for (let k = Math.floor(n * Math.log2(fmin / 1000)) - 1; ; k++) {
+      const f = 1000 * 2 ** (k / n);
+      if (f > fmax * (1 + 1e-9)) break;
+      if (f < fmin * (1 - 1e-9)) continue;
+      if (!twin(k, f)) grid.push(round6(f));
+    }
   }
   return [...grid, ...keys].sort((p, q) => p - q).filter((f, i, all) => i === 0 || f !== all[i - 1]);
 }
 
 /**
  * Evaluate a document to [hz, db] pairs, rounded to 6 decimals.
- * With no `freqs`: grid.mode "original" uses the imported frequencies in order, "simplified" keeps only
- * the points needed to stay within grid.epsilon dB (default 0.1) of the curve, otherwise the resample grid is used.
+ * With no `freqs`: grid.mode "original" uses the imported frequencies in order, otherwise the resample grid is used.
+ * With grid.simplify (or the older mode "simplified", which means 1/48 octave) only the points needed to stay within
+ * grid.epsilon dB (default 0.1) of the curve are kept, chosen from that grid plus the layer corners.
  * @param {{grid?: object, layers: object[], normalise?: {on: boolean, at: number}, original?: number[][]|null}} doc
  * @param {number[]} [freqs]
  * @returns {number[][]}
  */
 export function evaluate(doc, freqs) {
   const grid = doc.grid ?? {};
-  const simplified = !freqs && grid.mode === "simplified";
+  // Breakpoints only: the old mode "simplified" (1/48 candidates), or the grid.simplify switch on any resolution.
+  const legacySimplified = grid.mode === "simplified";
+  const simplified = !freqs && (legacySimplified || grid.simplify === true);
   if (!freqs) {
     // Trim (SPEC §3.5): the output covers only [lo, hi]. For the resample and simplified grids that is just the
     // grid range; for "original" the imported points outside it are dropped (and only when a trim is set).
     const [lo, hi] = effectiveRange(grid);
     const ranged = { ...grid, fmin: lo, fmax: hi };
     if (!(lo <= hi)) freqs = []; // an empty range (a trim past the other end of the grid) holds no points
-    else if (simplified) freqs = denseGrid({ ...doc, grid: ranged, layers: visibleLayers(doc) });
     else if (grid.mode === "original" && doc.original) {
       freqs = doc.original.map((p) => p[0]).filter((f) => (!Number.isFinite(grid.trimLow) || f >= grid.trimLow) && (!Number.isFinite(grid.trimHigh) || f <= grid.trimHigh));
-    } else freqs = makeGrid(ranged);
+    } else if (simplified) freqs = denseGrid({ ...doc, grid: ranged, layers: visibleLayers(doc) }, legacySimplified ? 48 : Number(grid.fraction ?? 3));
+    else freqs = makeGrid(ranged);
   }
   const layers = visibleLayers(doc);
   let out = freqs.map((f) => [f, totalDb(f, layers)]);

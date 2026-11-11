@@ -4,6 +4,7 @@ import { FILTERS, LAYER_LIMITS, interpPoints } from "./layers.js";
 import { WEIGHTINGS, SHAPES } from "./eq.js";
 import { detectFormat } from "./formats/index.js";
 import { sanitiseFileName } from "./formats/smaart.js";
+import { MAX_TRACE_POINTS, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT } from "./trace.js";
 
 export const LAYER_KINDS = {
   points: "Points",
@@ -97,6 +98,19 @@ function num(v, what, { positive = false, nullable = false } = {}) {
   const n = typeof v === "string" && v.trim() !== "" ? Number(v) : v;
   if (typeof n !== "number" || !Number.isFinite(n) || (positive && n <= 0)) throw new Error(`Invalid ${what}.`);
   return n;
+}
+
+/** A reference trace (SPEC §10) from untrusted data, or null when it is missing or unusable. */
+function loadTemplate(t) {
+  if (!isObj(t) || !Array.isArray(t.points) || t.points.length > MAX_TRACE_POINTS) return null;
+  let points;
+  try { points = loadPoints(t.points); } catch { return null; }
+  points.sort((a, b) => a[0] - b[0]);
+  points = points.filter((p, i) => i === 0 || p[0] !== points[i - 1][0]);
+  if (points.length < 2) return null;
+  const offset = Number.isFinite(t.offset) ? Math.max(-TRACE_OFFSET_LIMIT, Math.min(TRACE_OFFSET_LIMIT, t.offset)) : 0;
+  const name = typeof t.name === "string" ? clean(t.name).replace(/	/g, " ").trim().slice(0, 100) : "";
+  return { name, points, offset, smooth: TRACE_SMOOTHINGS.includes(t.smooth) ? t.smooth : 0, normalise: t.normalise === true, show: t.show !== false };
 }
 
 function loadPoints(list) {
@@ -246,7 +260,10 @@ export function loadDoc(obj) {
   }
   const originalProps = isObj(obj.originalProps) ? loadProps(obj.originalProps) : null;
   const original = obj.original === null || obj.original === undefined ? null : loadPoints(obj.original);
-  grid.mode = g.mode === "original" && original ? "original" : g.mode === "simplified" ? "simplified" : "resample";
+  // The older mode "simplified" (1/48-octave candidates) becomes breakpoints-only on the 1/48 grid.
+  grid.mode = g.mode === "original" && original ? "original" : "resample";
+  if (g.mode === "simplified") { grid.fraction = 48; grid.simplify = true; }
+  else if (g.simplify === true) grid.simplify = true;
   if (Number.isFinite(g.epsilon) && g.epsilon >= 0.001 && g.epsilon <= 12) grid.epsilon = g.epsilon;
 
   if (!Array.isArray(obj.layers) || obj.layers.length > MAX_LAYERS) throw new Error("Invalid layer list.");
@@ -256,6 +273,7 @@ export function loadDoc(obj) {
     const name = typeof g.name === "string" ? clean(g.name).replace(/	/g, " ").trim().slice(0, 24) : "";
     return { name: name || def.name, on: g.on !== false };
   });
+  const template = loadTemplate(obj.template);
   return {
     version: 1,
     props,
@@ -265,6 +283,7 @@ export function loadDoc(obj) {
     original,
     originalProps: original ? originalProps : null,
     groups,
+    ...(template ? { template } : {}),
   };
 }
 

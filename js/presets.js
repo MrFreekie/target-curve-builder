@@ -257,7 +257,7 @@ export const BUILT_IN_PRESETS = [
       d.props.line = 3;
       d.props.color = colour;
       d.layers.find((l) => l.kind === "points").points = points.map((p) => [...p]);
-      d.grid = { mode: "simplified", fraction: 12, fmin: 20, fmax: 20000, epsilon: 0.05 }; // the corners only
+      d.grid = { mode: "resample", fraction: 48, simplify: true, fmin: 20, fmax: 20000, epsilon: 0.05 }; // the corners only
       return d;
     },
   })),

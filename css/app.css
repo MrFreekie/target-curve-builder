@@ -49,6 +49,8 @@ button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0
 .name-field { grid-template-columns: auto 1fr; }
 .colour-row { display: flex; gap: 6px; align-items: center; }
 .iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-height: 40px; padding: 0; }
+.check-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.check-row input[type="text"] { flex: 1; min-width: 0; width: auto; }
 .name-row { display: flex; gap: 6px; min-width: 0; }
 .name-row input { flex: 1; min-width: 0; width: auto; }
 .name-row button { white-space: nowrap; font-size: 0.85rem; }
@@ -99,6 +101,7 @@ fieldset label { display: flex; align-items: center; gap: 4px; min-height: 44px;
 .plot .tick, .plot .axis { fill: var(--muted); font-size: 12px; }
 .plot .curve { fill: none; stroke-linejoin: round; }
 .plot .band { opacity: 0.18; stroke: none; }
+.plot .template { fill: none; stroke: var(--ok); stroke-width: 1.6; stroke-linejoin: round; }
 .plot .original { fill: none; stroke: var(--muted); stroke-width: 1.5; stroke-dasharray: 5 4; }
 .plot .pt { fill: var(--panel); stroke-width: 2; }
 .plot .hover-line { stroke: var(--muted); stroke-dasharray: 3 3; }

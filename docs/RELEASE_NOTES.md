@@ -1,12 +1,16 @@
 # Release notes
 
 ## Unreleased
+- Output grid: Breakpoints only is now a tick box that works with any resolution (it keeps the points that matter from the chosen grid, plus every layer corner), and Hide points is a tick box too. A 1/48 octave choice was added. Each trim has a tick box and shows 20 Hz and 20 kHz as its starting values. Normalise has its tick box beside the Hz box. Older saved documents that used the Breakpoints only mode load as breakpoints only on 1/48 octave.
+- Plain text export: Hz and dB, tab separated (Hz to 3 decimals, dB to 2), for REW, HouseCurve and spreadsheets.
+- Reference trace: import a measurement or any Hz and dB text to draw behind the target, with offset, smoothing and 0 dB at 1 kHz, a show/hide box, and an Add as a layer button. Never exported (SPEC §10).
+- Share: Copy link to this curve (SPEC §11).
 - Shark fin shape, and four fun built-in presets drawn as points: Skyline, Heartbeat, Mountain range and Castle (crenellations).
 - Layers are now organised in tabs, one for each of the three groups (every layer is in a group; new ones start in A), each with its own Add layer control and an eye button that shows or hides the group's layers; the group name and Shown/Hidden button sit at the top of its tab. The left bar is wider, "Random colour" is shorter, the suggested-name button sits next to the Name box, and the Buy me a beer link moved to the top bar.
 - Mesa-style asymmetric filter layer: a bump or dip with independent slopes on its lower and upper sides, made from two raised-cosine shelf steps as the Lake Mesa EQ is described. Our own construction, not Lake's published algorithm (SPEC §4.4h).
 - Layer groups: three renamable groups (A, B, C) with independent Shown/Hidden buttons above the layer list, and a Group choice on every layer. A hidden group's layers are left out of the plot, the table, the ghosts and the export. See SPEC §4.8.
 - Import can now add as well as replace: when a curve is already open, importing a `.crv` asks "Replace the current curve" or "Add as a layer". Adding keeps your curve and adds the file's points as a new Points layer, named after the file, that sums with the other layers (a spectrum file is shifted to 0 dB at 1 kHz first). A blank new document still just takes the file. All of it can be undone.
-- Note names and wavelength options above the plot: the hover readout and the points table can show the nearest musical note (A4 = 440 Hz, with cents) and the wavelength at 343 m/s. Display only, never exported.
+- The hover readout over the plot also shows the wavelength at 343 m/s. It is display only: not in the points table or any export. (An earlier note-name option was removed.)
 - Layer ghosts: a global toggle above the plot draws each enabled layer's own contribution as a faint coloured line behind the curve, with a matching colour stripe on its row in the layer list. A view setting only; it is not exported.
 - Low trim and high trim in the Output grid section: crop the preview and the exported points to a frequency range (SPEC §3.5). Empty by default, so imported files still export unchanged. The plot axis stays at the full range; only the curve is cropped.
 - Shape layer: pyramid (triangle), box (square), half circle, trapezoid, cosine bump, parabola, rising and falling ramps (sawtooth), sine wave, square wave and staircase, with a centre, a base width in octaves and a height of ±dB. See SPEC §4.4g.

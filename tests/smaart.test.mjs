@@ -389,10 +389,10 @@ test("detectFormat returns null for text that is not a curve", () => {
 });
 
 test("registry: adapter ids, getAdapter and writableAdapters", () => {
-  assert.deepEqual(ADAPTERS.map((a) => a.id).sort(), ["smaart-ascii", "smaart-spectrum", "smaart-tf"]);
+  assert.deepEqual(ADAPTERS.map((a) => a.id).sort(), ["plain-text", "smaart-ascii", "smaart-spectrum", "smaart-tf"]);
   assert.equal(getAdapter("smaart-tf"), smaartTf);
   assert.equal(getAdapter("nope"), undefined);
-  assert.deepEqual(writableAdapters().map((a) => a.id), ["smaart-tf", "smaart-ascii"]);
+  assert.deepEqual(writableAdapters().map((a) => a.id), ["smaart-tf", "smaart-ascii", "plain-text"]);
 });
 
 test("adapters expose the SPEC §6 interface", () => {
