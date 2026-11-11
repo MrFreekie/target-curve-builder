@@ -53,16 +53,23 @@ const profile = await mkdtemp(join(tmpdir(), "tcb-e2e-"));
 const browser = spawn(findBrowser(), [
   "--headless=new", "--remote-debugging-port=0", `--user-data-dir=${profile}`, "--no-first-run", "--no-default-browser-check",
   "--disable-extensions", "--no-sandbox", "--disable-gpu", "about:blank",
-], { stdio: "ignore" });
+], { stdio: ["ignore", "ignore", "pipe"] });
+let browserLog = "";
+browser.stderr.on("data", (d) => { browserLog += d; });
+let browserExit = null;
+browser.on("exit", (code) => { browserExit = code; });
 
 async function devtoolsPort() {
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 300; i++) { // up to 30 seconds: a cold CI machine can be slow
     try {
       const text = await readFile(join(profile, "DevToolsActivePort"), "utf8");
       return Number(text.split("\n")[0]);
-    } catch { await new Promise((r) => setTimeout(r, 100)); }
+    } catch {
+      if (browserExit !== null) break;
+      await new Promise((r) => setTimeout(r, 100));
+    }
   }
-  throw new Error("The browser didn't start.");
+  throw new Error(`The browser didn't start${browserExit !== null ? ` (it exited with code ${browserExit})` : ""}. ${browserLog.slice(-1500)}`);
 }
 const port = await devtoolsPort();
 const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
