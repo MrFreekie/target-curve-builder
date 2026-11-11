@@ -60,6 +60,8 @@
           <legend class="sr-only">Output grid resolution</legend>
         </fieldset>
         <div class="field" id="eps-field" hidden><label for="g-eps">Max error (dB)</label><input id="g-eps" type="text" inputmode="decimal" autocomplete="off"></div>
+        <div class="field"><label for="trim-low">Low trim (Hz)</label><input id="trim-low" type="text" inputmode="decimal" autocomplete="off" placeholder="none"></div>
+        <div class="field"><label for="trim-high">High trim (Hz)</label><input id="trim-high" type="text" inputmode="decimal" autocomplete="off" placeholder="none"></div>
         <div class="field"><label for="n-on">Normalise</label><input id="n-on" type="checkbox"></div>
         <div class="field"><label for="n-at">Normalise at (Hz)</label><input id="n-at" type="text" inputmode="decimal" autocomplete="off"></div>
       </section>
@@ -76,6 +78,9 @@
         <input id="yoff" type="range" min="-20" max="20" step="1" value="0" aria-describedby="yoff-val">
         <output id="yoff-val" for="yoff">0 dB</output>
         <button type="button" id="yoff-reset">Centre</button>
+        <button type="button" id="btn-ghosts" aria-pressed="false">Layer ghosts: off</button>
+        <button type="button" id="btn-notes" aria-pressed="false">Note names: off</button>
+        <button type="button" id="btn-wave" aria-pressed="false" title="Wavelength = 343 m/s divided by frequency">Wavelength: off</button>
       </div>
       <svg id="plot" class="plot" aria-describedby="points-table"><title>Target curve plot</title></svg>
       <p class="note" id="handle-hint"></p>

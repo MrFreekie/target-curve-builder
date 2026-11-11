@@ -2,20 +2,20 @@
   color-scheme: dark light;
   --bg: #14161a; --panel: #1d2026; --panel2: #262a32; --text: #e8eaed; --muted: #9aa0aa;
   --border: #3a3f49; --accent: #4da3ff; --danger: #ff6b6b; --ok: #5bd48a;
-  --grid: #323741; --grid-major: #4a505c; --focus: #ffd24d; --on-accent: #0b1520;
+  --grid: #323741; --grid-major: #4a505c; --focus: #ffd24d; --on-accent: #0b1520; --ghost-l: 62%;
 }
 @media (prefers-color-scheme: light) {
   :root:not([data-theme="dark"]) {
     --bg: #f4f5f7; --panel: #ffffff; --panel2: #eceef2; --text: #1b1e23; --muted: #596070;
     --border: #c3c8d2; --accent: #0b64c0; --danger: #b3261e; --ok: #1a7f43;
-    --grid: #dde0e6; --grid-major: #b9bec9; --focus: #b36b00; --on-accent: #ffffff;
+    --grid: #dde0e6; --grid-major: #b9bec9; --focus: #b36b00; --on-accent: #ffffff; --ghost-l: 38%;
   }
 }
 :root[data-theme="light"] {
   color-scheme: light;
   --bg: #f4f5f7; --panel: #ffffff; --panel2: #eceef2; --text: #1b1e23; --muted: #596070;
   --border: #c3c8d2; --accent: #0b64c0; --danger: #b3261e; --ok: #1a7f43;
-  --grid: #dde0e6; --grid-major: #b9bec9; --focus: #b36b00; --on-accent: #ffffff;
+  --grid: #dde0e6; --grid-major: #b9bec9; --focus: #b36b00; --on-accent: #ffffff; --ghost-l: 38%;
 }
 :root[data-theme="dark"] { color-scheme: dark; }
 * { box-sizing: border-box; }
@@ -102,6 +102,8 @@ a.bmc:hover { filter: brightness(0.95); }
 .plot-tools { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
 .plot-tools input[type="range"] { flex: 1; min-width: 140px; max-width: 320px; height: 40px; accent-color: var(--accent); }
 .plot-tools output { min-width: 5ch; font-variant-numeric: tabular-nums; }
+.plot .ghost { fill: none; stroke-width: 1.6; opacity: 0.6; stroke-linejoin: round; }
+.layer.ghosted { border-left: 5px solid hsl(var(--gh) 70% var(--ghost-l)); }
 .plot .handle { fill: transparent; stroke: none; cursor: ns-resize; }
 .plot .handle-dot { fill: var(--accent); stroke: var(--bg); stroke-width: 2; pointer-events: none; }
 .plot .handle:hover, .plot .handle:focus-visible { stroke: var(--focus); stroke-width: 3; outline: none; }

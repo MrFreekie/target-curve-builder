@@ -187,3 +187,46 @@ export function weightingDb(curve, f) {
   if (typeof curve !== "string" || !Object.hasOwn(WEIGHTINGS, curve)) throw new RangeError(`Unknown weighting curve ${curve}`);
   return WEIGHTINGS[curve].db(f);
 }
+
+// ---------------------------------------------------------------- Shapes
+/**
+ * Fun shapes drawn on the graph against log frequency: u = log2(f/fc) / (width/2), so the shape spans
+ * u from -1 to +1 (the full base width, in octaves) and is 0 outside. `db` is the height (negative for a dip).
+ * t = (u + 1) / 2 runs from 0 at the left edge to 1 at the right edge. `count` is the number of cycles for the
+ * waves and the number of steps for the staircase; `countLabel` names it in the UI (null: not used).
+ * @type {Record<string, {label: string, countLabel: string|null, value: (u: number, flat: number, count: number) => number}>}
+ */
+export const SHAPES = {
+  pyramid: { label: "Pyramid (triangle)", countLabel: null, value: (u) => 1 - Math.abs(u) },
+  box: { label: "Box (square)", countLabel: null, value: () => 1 },
+  semicircle: { label: "Half circle", countLabel: null, value: (u) => Math.sqrt(1 - u * u) },
+  trapezoid: { label: "Trapezoid", countLabel: null, value: (u, flat) => Math.min(1, (1 - Math.abs(u)) / (1 - flat)) },
+  cosine: { label: "Cosine bump (smooth)", countLabel: null, value: (u) => 0.5 * (1 + Math.cos(Math.PI * u)) },
+  parabola: { label: "Parabola (arch)", countLabel: null, value: (u) => 1 - u * u },
+  rampUp: { label: "Ramp up (sawtooth)", countLabel: null, value: (u) => (1 + u) / 2 },
+  rampDown: { label: "Ramp down (sawtooth)", countLabel: null, value: (u) => (1 - u) / 2 },
+  sine: { label: "Sine wave", countLabel: "Cycles", value: (u, flat, count) => Math.sin(Math.PI * count * (u + 1)) },
+  square: { label: "Square wave", countLabel: "Cycles", value: (u, flat, count) => (Math.sin(Math.PI * count * (u + 1)) >= 0 ? 1 : -1) },
+  stairs: { label: "Staircase (rising)", countLabel: "Steps", value: (u, flat, count) => {
+    const n = Math.max(2, Math.round(count));
+    return Math.min(n - 1, Math.floor(((u + 1) / 2) * n)) / (n - 1);
+  } },
+};
+
+/**
+ * Value of a shape at one frequency.
+ * @param {string} shape Key of SHAPES.
+ * @param {number} f Frequency in Hz.
+ * @param {number} fc Centre in Hz.
+ * @param {number} width Full base width in octaves.
+ * @param {number} db Height in dB.
+ * @param {number} [flat] Trapezoid only: fraction of the half width that is flat on top, 0 to below 1.
+ * @param {number} [count] Sine and square wave: cycles across the width. Staircase: number of steps.
+ * @returns {number} dB
+ */
+export function shapeDb(shape, f, fc, width, db, flat = 0.5, count = 3) {
+  if (typeof shape !== "string" || !Object.hasOwn(SHAPES, shape)) throw new RangeError(`Unknown shape ${shape}`);
+  const u = Math.log2(f / fc) / (width / 2);
+  if (!(Math.abs(u) <= 1)) return 0; // also 0 for NaN
+  return db * SHAPES[shape].value(u, flat, count);
+}

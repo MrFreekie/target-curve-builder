@@ -80,6 +80,18 @@ export function totalDb(f, layers) {
   return sum;
 }
 
+/**
+ * The frequency range the output and the plot cover: the trim when set (grid.trimLow / grid.trimHigh),
+ * otherwise grid.fmin / grid.fmax (default 20 Hz to 20 kHz).
+ * @param {{fmin?: number, fmax?: number, trimLow?: number, trimHigh?: number}} [grid]
+ * @returns {[number, number]} [low, high] in Hz
+ */
+export function effectiveRange(grid = {}) {
+  const lo = Number.isFinite(grid.trimLow) ? grid.trimLow : Number(grid.fmin ?? 20);
+  const hi = Number.isFinite(grid.trimHigh) ? grid.trimHigh : Number(grid.fmax ?? 20000);
+  return [lo, hi];
+}
+
 /** Default maximum error (dB) for the "simplified" grid; the allowed range is 0.001 to 12. */
 export const DEFAULT_EPSILON = 0.1;
 
@@ -94,7 +106,22 @@ export function keyFrequencies(layers) {
   for (const l of layers) {
     if (l.on !== undefined && !l.on) continue;
     if (l.kind === "points") for (const p of l.points) out.push(p[0]);
-    else for (const k of ["pivot", "corner", "floor", "fc"]) if (l[k] != null) out.push(l[k]);
+    else {
+      for (const k of ["pivot", "corner", "floor", "fc"]) if (l[k] != null) out.push(l[k]);
+      if (l.kind === "shape" && Number(l.fc) > 0 && Number(l.width) > 0) {
+        // the corners of a shape: its edges, and for a trapezoid the ends of the flat top
+        const half = Number(l.width) / 2;
+        const spans = l.shape === "trapezoid" ? [half, half * Math.min(0.99, Math.max(0, Number(l.flat ?? 0.5)))] : [half];
+        for (const s of spans) out.push(l.fc * 2 ** -s, l.fc * 2 ** s);
+        // the jumps of the square wave and the staircase are corners too
+        const n = Number(l.count ?? 3);
+        const jumps = l.shape === "square" ? Math.ceil(2 * n) : l.shape === "stairs" ? Math.max(2, Math.round(n)) : 0;
+        for (let k = 1; k < jumps; k++) {
+          const t = l.shape === "square" ? k / (2 * n) : k / jumps;
+          out.push(l.fc * 2 ** (half * (2 * t - 1)));
+        }
+      }
+    }
   }
   return out.map(Number).filter((f) => Number.isFinite(f) && f > 0);
 }
@@ -170,8 +197,15 @@ export function evaluate(doc, freqs) {
   const grid = doc.grid ?? {};
   const simplified = !freqs && grid.mode === "simplified";
   if (!freqs) {
-    if (simplified) freqs = denseGrid(doc);
-    else freqs = grid.mode === "original" && doc.original ? doc.original.map((p) => p[0]) : makeGrid(grid);
+    // Trim (SPEC §3.5): the output covers only [lo, hi]. For the resample and simplified grids that is just the
+    // grid range; for "original" the imported points outside it are dropped (and only when a trim is set).
+    const [lo, hi] = effectiveRange(grid);
+    const ranged = { ...grid, fmin: lo, fmax: hi };
+    if (!(lo <= hi)) freqs = []; // an empty range (a trim past the other end of the grid) holds no points
+    else if (simplified) freqs = denseGrid({ ...doc, grid: ranged });
+    else if (grid.mode === "original" && doc.original) {
+      freqs = doc.original.map((p) => p[0]).filter((f) => (!Number.isFinite(grid.trimLow) || f >= grid.trimLow) && (!Number.isFinite(grid.trimHigh) || f <= grid.trimHigh));
+    } else freqs = makeGrid(ranged);
   }
   const layers = doc.layers;
   let out = freqs.map((f) => [f, totalDb(f, layers)]);
@@ -187,4 +221,31 @@ export function evaluate(doc, freqs) {
     out = simplify(out, limit - 1e-6);
   }
   return out.map(([f, g]) => [f, round6(g)]);
+}
+
+/**
+ * Each enabled layer's own contribution (the "ghost" of that layer) over the plot range, 20 Hz to 20 kHz on the
+ * dense grid of SPEC §3.4 (so every layer corner is included). Inversion applies, normalise does not.
+ * Layers that are switched off, or that fail to evaluate, are skipped.
+ * @param {{layers: object[]}} doc
+ * @returns {{id: string, index: number, kind: string, points: number[][]}[]} `index` is the layer's position in the list
+ */
+export function layerGhosts(doc) {
+  let freqs;
+  try {
+    freqs = denseGrid({ grid: { fmin: 20, fmax: 20000 }, layers: doc.layers });
+  } catch {
+    return []; // a layer too broken to list its corners: the export check reports it
+  }
+  const out = [];
+  doc.layers.forEach((layer, index) => {
+    if (layer.on !== undefined && !layer.on) return;
+    try {
+      const points = freqs.map((f) => [f, layerDb(f, layer) + 0]);
+      if (points.every((p) => Number.isFinite(p[1]))) out.push({ id: layer.id, index, kind: layer.kind, points });
+    } catch {
+      /* an invalid layer has no ghost; the export check reports it */
+    }
+  });
+  return out;
 }

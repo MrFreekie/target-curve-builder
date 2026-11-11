@@ -19,6 +19,12 @@ function parts(l) {
 
 function rawParts(l) {
   switch (l.kind) {
+    case "shape": {
+      const names = { pyramid: "Pyramid", box: "Box", semicircle: "HalfCircle", trapezoid: "Trapezoid", cosine: "Cosine", parabola: "Parabola", rampUp: "RampUp", rampDown: "RampDown", sine: "Sine", square: "Square", stairs: "Stairs" };
+      const name = Object.hasOwn(names, l.shape) ? names[l.shape] : "Shape";
+      const extra = l.shape === "stairs" ? `_${n(l.count)}steps` : l.shape === "sine" || l.shape === "square" ? `_${n(l.count)}cyc` : "";
+      return l.db ? [`${name}${l.db > 0 ? "+" : ""}${n(l.db)}dB_${n(l.fc)}Hz_${n(l.width)}oct${extra}`] : [];
+    }
     case "weighting":
       const short = { A: "AWt", C: "CWt", RIAA: "RIAA", FM75: "FM75", FM50: "FM50" };
       return [Object.hasOwn(short, l.curve) ? short[l.curve] : "Wt"];
@@ -64,7 +70,7 @@ function rawParts(l) {
  */
 export function suggestName(doc) {
   const on = doc.layers.filter((l) => l.on !== false && l.on !== 0);
-  const order = { points: 0, fullTilt: 1, lfTilt: 1, hfTilt: 2, gain: 3, weighting: 3.1, bell: 3.2, hill: 3.3, subBoost: 3.5, hiShelf: 3.6, hpf: 4, rHpf: 4.5, lpf: 5, rLpf: 5.5 };
+  const order = { points: 0, fullTilt: 1, lfTilt: 1, hfTilt: 2, gain: 3, weighting: 3.1, bell: 3.2, hill: 3.3, shape: 3.4, subBoost: 3.5, hiShelf: 3.6, hpf: 4, rHpf: 4.5, lpf: 5, rLpf: 5.5 };
   const sorted = [...on].sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9));
   const name = sorted.flatMap(parts).join("_");
   return name || "Flat";

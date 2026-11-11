@@ -19,7 +19,11 @@ const asMap = (p) => Object.fromEntries(buildCrv(p.build()).points);
 
 test("the medium theatre preset reproduces Table 1 exactly at every listed frequency, and only those", () => {
   const out = asMap(preset(/medium theatre/));
-  assert.deepEqual(Object.keys(out).map(Number), Object.keys(TABLE_1).map(Number));
+  // in ascending order, point by point (object keys are not kept in this order, so use an explicit list)
+  const ORDER = [31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500, 630, 800, 1000, 1250, 1600, 2000, 2500, 3150, 4000, 5000, 6300, 8000, 10000, 12500, 16000];
+  assert.deepEqual(buildCrv(preset(/medium theatre/).build()).points.map(([f]) => f), ORDER);
+  assert.deepEqual(buildCrv(preset(/medium theatre/).build()).points.map(([, g]) => g), ORDER.map((f) => TABLE_1[f]));
+  assert.equal(Object.keys(out).length, ORDER.length);
   for (const [f, v] of Object.entries(TABLE_1)) assert.equal(out[f], v, `${f} Hz`);
 });
 

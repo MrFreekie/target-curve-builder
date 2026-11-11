@@ -1,15 +1,16 @@
 // UI state and wiring. Maths lives in curve.js / layers.js; file formats in formats/.
-import { evaluate } from "./curve.js";
+import { evaluate, effectiveRange, layerGhosts } from "./curve.js";
 import { FILTERS } from "./layers.js";
 import { getAdapter, writableAdapters } from "./formats/index.js";
 import { fmt6, pickerToSmaart, smaartToPicker, crvFileName, exportFileName } from "./formats/smaart.js";
 import { createPlot } from "./plot.js";
 import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf, resetToImport } from "./doc.js";
-import { WEIGHTINGS } from "./eq.js";
+import { WEIGHTINGS, SHAPES } from "./eq.js";
 import * as presets from "./presets.js";
 import { suggestName } from "./naming.js";
 import { randomContrastingColour } from "./colour.js";
 import { qToBw, bwToQ } from "./bandwidth.js";
+import { noteLabel, wavelengthLabel } from "./pitch.js";
 
 export { newDoc, newLayer };
 
@@ -31,6 +32,15 @@ function layerIssues(doc) {
   }
   if (doc.grid.mode === "simplified" && doc.grid.epsilon !== undefined && !(doc.grid.epsilon >= 0.001 && doc.grid.epsilon <= 12)) {
     bad("Breakpoints only: max error must be between 0.001 and 12 dB.");
+  }
+  const g = doc.grid;
+  for (const [key, label] of [["trimLow", "Low trim"], ["trimHigh", "High trim"]]) {
+    if (g[key] !== undefined && !(g[key] >= 1 && g[key] <= 100000)) bad(`${label} must be between 1 and 100000 Hz.`);
+  }
+  if (g.trimLow !== undefined && g.trimHigh !== undefined && !(g.trimLow < g.trimHigh)) bad("Low trim must be below high trim.");
+  else if (g.mode !== "original") {
+    const [lo, hi] = effectiveRange(g);
+    if (!(lo <= hi)) bad("The trim leaves no frequency range: the low trim is above the end of the grid, or the high trim below its start.");
   }
   if (doc.normalise.on && !(doc.normalise.at > 0)) bad("Normalise: frequency must be greater than 0 Hz.");
   if (Number(doc.props.tolerance) < 0) bad("Tolerance can't be negative.");
@@ -261,6 +271,7 @@ function startApp() {
   function baseTitle(l) {
     switch (l.kind) {
       case "weighting": return WEIGHTINGS[l.curve]?.label ?? "Weighting";
+      case "shape": return `${SHAPES[l.shape]?.label ?? "Shape"} ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, ${l.width} oct wide`;
       case "points": return `Points (${l.points.length})`;
       case "lfTilt": return `LF tilt ${l.dbPerOct} dB/oct`;
       case "hfTilt": return `HF tilt ${l.dbPerOct} dB/oct`;
@@ -388,6 +399,16 @@ function startApp() {
       case "rLpf":
         body.append(numField("Corner frequency (Hz)", l.fc, set("fc")), numField("Q (0.707 flat, higher peaks)", l.q, set("q")));
         break;
+      case "shape":
+        body.append(
+          selectField("Shape", Object.entries(SHAPES).map(([id, sh]) => [id, sh.label]), l.shape, (v) => { l.shape = v; update(); renderLayers([l.id, "toggle"]); }),
+          numField("Height (± dB, up to 60)", l.db, set("db")),
+          numField("Centre frequency (Hz)", l.fc, set("fc")),
+          numField("Width at the base (octaves)", l.width, set("width")),
+        );
+        if (l.shape === "trapezoid") body.append(numField("Flat top (0 = pyramid, up to 0.99)", l.flat ?? 0.5, set("flat")));
+        if (SHAPES[l.shape]?.countLabel) body.append(numField(`${SHAPES[l.shape].countLabel} (${l.shape === "stairs" ? "2 to 16" : "0.5 to 16"})`, l.count ?? 3, set("count")));
+        break;
       case "weighting":
         body.append(selectField("Curve", Object.entries(WEIGHTINGS).map(([id, w]) => [id, w.label]), l.curve, (v) => { l.curve = v; update(); renderLayers([l.id, "toggle"]); }));
         break;
@@ -433,6 +454,7 @@ function startApp() {
       const li = document.createElement("li");
       li.className = `layer${l.on ? "" : " off"}`;
       li.dataset.id = l.id;
+      stripe(li, l, i);
       const head = document.createElement("div");
       head.className = "layer-head";
       const on = document.createElement("input");
@@ -441,7 +463,7 @@ function startApp() {
       const label = `${layerTitle(l)}, layer ${i + 1} of ${doc.layers.length}`;
       on.dataset.action = "on";
       on.setAttribute("aria-label", `${label}: on`);
-      on.addEventListener("change", () => { l.on = on.checked; li.classList.toggle("off", !l.on); update(); });
+      on.addEventListener("change", () => { l.on = on.checked; li.classList.toggle("off", !l.on); stripe(li, l, i); update(); });
       const title = document.createElement("button");
       title.type = "button";
       title.className = "title";
@@ -501,6 +523,8 @@ function startApp() {
     $("p-usetol").checked = !!p.useTolerance;
     $("p-offset").value = p.offset === null ? "" : String(p.offset);
     $("g-eps").value = String(doc.grid.epsilon ?? 0.1);
+    $("trim-low").value = doc.grid.trimLow === undefined ? "" : String(doc.grid.trimLow);
+    $("trim-high").value = doc.grid.trimHigh === undefined ? "" : String(doc.grid.trimHigh);
     $("n-on").checked = doc.normalise.on;
     $("n-at").value = String(doc.normalise.at);
     renderGridModes();
@@ -573,6 +597,51 @@ function startApp() {
   $("yoff-reset").addEventListener("click", () => setYoff(0));
   applyYoffUi();
 
+  // ---- layer ghosts: each enabled layer's own contribution drawn faintly behind the curve (a view setting)
+  let ghostsOn = false;
+  try { ghostsOn = localStorage.getItem("tcb-ghosts") === "1"; } catch { /* storage unavailable */ }
+  const ghostHue = (index) => (index * 47 + 15) % 360;
+  /** Colour stripe on a layer row that matches its ghost line. */
+  function stripe(li, l, i) {
+    li.classList.toggle("ghosted", ghostsOn && !!l.on);
+    li.style.setProperty("--gh", String(ghostHue(i)));
+  }
+  const applyGhostsUi = () => {
+    $("btn-ghosts").setAttribute("aria-pressed", String(ghostsOn));
+    $("btn-ghosts").textContent = `Layer ghosts: ${ghostsOn ? "on" : "off"}`;
+  };
+  $("btn-ghosts").addEventListener("click", () => {
+    ghostsOn = !ghostsOn;
+    try { localStorage.setItem("tcb-ghosts", ghostsOn ? "1" : "0"); } catch { /* storage unavailable */ }
+    applyGhostsUi();
+    document.querySelectorAll("#layers li").forEach((li, i) => stripe(li, doc.layers[i], i));
+    update();
+  });
+  applyGhostsUi();
+
+  // ---- note names and wavelength (343 m/s): shown in the hover readout and as table columns, never exported
+  let notesOn = false;
+  let waveOn = false;
+  try {
+    notesOn = localStorage.getItem("tcb-notes") === "1";
+    waveOn = localStorage.getItem("tcb-wave") === "1";
+  } catch { /* storage unavailable */ }
+  const applyPitchUi = () => {
+    $("btn-notes").setAttribute("aria-pressed", String(notesOn));
+    $("btn-notes").textContent = `Note names: ${notesOn ? "on" : "off"}`;
+    $("btn-wave").setAttribute("aria-pressed", String(waveOn));
+    $("btn-wave").textContent = `Wavelength: ${waveOn ? "on" : "off"}`;
+  };
+  for (const [id, key, flip] of [["btn-notes", "tcb-notes", () => { notesOn = !notesOn; return notesOn; }], ["btn-wave", "tcb-wave", () => { waveOn = !waveOn; return waveOn; }]]) {
+    $(id).addEventListener("click", () => {
+      const on = flip();
+      try { localStorage.setItem(key, on ? "1" : "0"); } catch { /* storage unavailable */ }
+      applyPitchUi();
+      update();
+    });
+  }
+  applyPitchUi();
+
   // ---- lines only: hide the point markers and drag handles on the plot (a view setting)
   let linesOnly = false;
   try { linesOnly = localStorage.getItem("tcb-lines") === "1"; } catch { /* storage unavailable */ }
@@ -644,8 +713,13 @@ function startApp() {
         handles = evaluate(doc, hl.points.map((pt) => pt[0])).map(([f, g], i) => ({ f, g, i }));
       } catch { handles = []; }
     }
+    const [rangeLo, rangeHi] = effectiveRange(doc.grid);
+    handles = handles.filter((h) => h.f >= rangeLo && h.f <= rangeHi); // handles outside the trimmed range stay hidden
     plot.render({
+      // The axis always shows the full 20 Hz to 20 kHz; only the curve is cropped by the trim.
       handles, wide: doc.props.format === "smaart-spectrum", yRange: doc.props.format === "smaart-spectrum" ? null : zoom, yOffset, hidePoints: linesOnly,
+      extra: notesOn || waveOn ? (f) => [notesOn ? noteLabel(f) : "", waveOn ? wavelengthLabel(f) : ""].filter(Boolean).join("  ") : null,
+      ghosts: ghostsOn ? layerGhosts(doc).map((g) => ({ points: g.points, hue: ghostHue(g.index), title: layerTitle(doc.layers[g.index]) })) : [],
       points, original: doc.original, color: doc.props.color, line: Number(doc.props.line) || 2,
       tolerance: Number(doc.props.tolerance) || 0, useTolerance: !!doc.props.useTolerance, show: !!doc.props.show,
       description: points.length
@@ -655,9 +729,18 @@ function startApp() {
     $("h-table").textContent = `Exported points (${points.length})`;
     const tbody = $("points-table").tBodies[0];
     const rows = document.createDocumentFragment();
+    // Optional extra columns (display only): the nearest note and the wavelength.
+    const head = $("points-table").tHead.rows[0];
+    head.replaceChildren();
+    for (const t of ["Hz", "dB", ...(notesOn ? ["Note"] : []), ...(waveOn ? ["Wavelength"] : [])]) {
+      const th = document.createElement("th");
+      th.scope = "col";
+      th.textContent = t;
+      head.append(th);
+    }
     for (const [f, g] of points) {
       const tr = document.createElement("tr");
-      for (const v of [fmt6(f), fmt6(g)]) {
+      for (const v of [fmt6(f), fmt6(g), ...(notesOn ? [noteLabel(f)] : []), ...(waveOn ? [wavelengthLabel(f)] : [])]) {
         const td = document.createElement("td");
         td.textContent = v;
         tr.append(td);
@@ -764,6 +847,8 @@ function startApp() {
   bindNum("p-offset", (n) => { doc.props.offset = n; }, { optional: true });
   bindNum("n-at", (n) => { doc.normalise.at = n; });
   bindNum("g-eps", (n) => { doc.grid.epsilon = n; });
+  bindNum("trim-low", (n) => { if (n === null) delete doc.grid.trimLow; else doc.grid.trimLow = n; }, { optional: true });
+  bindNum("trim-high", (n) => { if (n === null) delete doc.grid.trimHigh; else doc.grid.trimHigh = n; }, { optional: true });
   $("n-on").addEventListener("change", () => { doc.normalise.on = $("n-on").checked; update(); });
 
   // ---- add layer

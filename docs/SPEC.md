@@ -69,6 +69,14 @@ Added after v1.0.0. A `.crv` need not list every value, because Smaart draws a s
 - **Guarantee:** straight lines through the exported points, against `pos(f)`, stay within `epsilon` dB of the dense curve at every dense point.
 - **Assumption, not yet confirmed in Smaart:** that Smaart's straight line is against log frequency, like the plot.
 
+### 3.5 Trim (`grid.trimLow`, `grid.trimHigh`)
+Added after v1.0.0. Optional limits that crop the curve and the exported points (not the plot axis, see below). Both are numbers from 1 to 100000 Hz and are absent by default; if both are given and `trimLow >= trimHigh` neither is kept. The **effective range** is `[trimLow ?? fmin, trimHigh ?? fmax]` (default 20 Hz to 20 kHz).
+- **Resample and simplified grids** are built over the effective range (§3.2, §3.4), so a trim outside `fmin`/`fmax` widens the grid. For the simplified grid the first and last points are exactly the range ends.
+- **Keep-original grid** drops imported points outside the range, edges included, and only when a trim is set; with no trim the imported frequencies are used unchanged, so an untouched import still exports byte for byte (§5.3). Values are not changed, only fewer points are written.
+- `evaluate(doc, freqs)` with explicit frequencies is never trimmed.
+- The plot's frequency axis is **not** cropped: it always shows the full 20 Hz to 20 kHz and only the curve (the exported points) is cropped. Drag handles of points outside the range are hidden. The dashed overlay of the imported file stays complete, as a reference.
+- A trim that leaves fewer than 2 points, or fails the limits above, blocks export. With the resample and simplified grids, a single trim that lies past the other end of the grid (a low trim above `fmax`, or a high trim below `fmin`) leaves an empty range: it holds no points, and export is blocked with a message about the trim. With the keep-original grid the same trim simply leaves no imported points, and export is blocked as having fewer than 2 points.
+
 ---
 
 ## 4. Layers (all values in dB, summed)
@@ -135,6 +143,21 @@ Added after v1.0.0. `curve` is one of `A`, `C`, `RIAA`, `FM75`, `FM50`. All are 
 - **RIAA playback (replay):** `H = (1 + j w 318e-6) / ((1 + j w 3180e-6)(1 + j w 75e-6))`, `w = 2 pi f`, dB = `20 log10 |H|` minus its value at 1 kHz (about +19.27 dB at 20 Hz, -19.62 dB at 20 kHz). The recording curve is the inverse (use invert).
 - **FM pre-emphasis 75 us / 50 us:** `|H| = sqrt(1 + (w tau)^2)`, `tau = 75e-6` or `50e-6` s. It is 0 dB at low frequencies (not shifted), +3.01 dB at `1/(2 pi tau)`. The de-emphasis is the inverse.
 - **Invert (every layer kind):** a layer with `invert: true` contributes the **negative** of its value at every frequency. It is a property of the layer, off unless exactly `true`. Inverting twice is the same as not inverting.
+
+### 4.4g Shapes (`kind: "shape"`)
+Added after v1.0.0. Fun shapes drawn on the graph against the true log of the frequency ratio. Parameters: `shape`, `fc` (centre, Hz), `width` (full width at the base, octaves, 0.1 to 10), `db` (height, -60 to +60) and two optional extras: `flat` (trapezoid only, 0 to 0.99, default 0.5) and `count` (sine wave, square wave and staircase only, 0.5 to 16, default 3). With `u = log2(f/fc) / (width/2)` the shape is `0` where `|u| > 1` and otherwise `db * g(u)`:
+- **pyramid** (triangle): `g = 1 - |u|`.
+- **box** (square): `g = 1`, so the edges at `|u| = 1` are included and the curve steps from 0 to `db` there.
+- **semicircle** (half circle): `g = sqrt(1 - u^2)`.
+- **trapezoid:** `g = min(1, (1 - |u|) / (1 - flat))`; `flat = 0` is the pyramid.
+- **cosine** (smooth bump): `g = (1 + cos(pi u)) / 2`.
+- **parabola** (arch): `g = 1 - u^2`.
+- **rampUp** / **rampDown** (sawtooth): `g = (1 + u) / 2` / `g = (1 - u) / 2`. The value at the far edge is the full `db`, then it jumps to 0 beyond it.
+- With `t = (u + 1) / 2` running from 0 at the left edge to 1 at the right edge:
+  - **sine** (sine wave): `g = sin(pi * count * (u + 1)) = sin(2 pi count t)`, `count` cycles starting at 0 and rising, ranging from `-db` to `+db`. At exactly the right edge with a whole `count` the sine is 0 and its sign is not defined.
+  - **square** (square wave): `g = +1` where that sine is >= 0 and `-1` where it is below 0.
+  - **stairs** (staircase): `n = max(2, round(count))` (halves round up) equal-width levels, `g = min(n-1, floor(t n)) / (n-1)`, rising from 0 to the full `db`.
+The pyramid, box, half circle, trapezoid, cosine bump and parabola are symmetric in log frequency; the ramps, waves and staircase are not. A negative `db` is an exact mirror for all of them. The edges (`fc * 2^(+/- width/2)`), for a trapezoid the ends of the flat top, for a square wave the `ceil(2 count) - 1` jumps at `t = k / (2 count)`, and for a staircase the `n - 1` jumps at `t = k / n`, are layer corners for §3.4.
 
 ### 4.5 Defaults for a new document
 - **Layers:** `points` (`[[20,0],[20000,0]]`, on), `lfTilt` (3 dB/oct, pivot 1 kHz, off), `fullTilt` (off), `hfTilt` (off), `hpf` (off), `lpf` (off).
@@ -264,6 +287,8 @@ v1 adapters are `smaart-tf` (read and write) and `smaart-spectrum` (read only). 
 ```
 
 - **Live updates:** changing any control updates the plot and table immediately.
+- **Note names and wavelength:** two independent view toggles (off by default, display only, never exported). Note: the nearest equal-tempered note in scientific pitch notation with A4 = 440 Hz (`midi = 69 + 12 log2(f/440)`, middle C is C4), with the distance in whole cents when it rounds to a non-zero value, for example `B1 +35¢`. Wavelength: `343 / f` metres (speed of sound 343 m/s), shown to 3 significant figures in m from 1 m, cm from 1 cm, otherwise mm. They are appended to the hover readout and added as columns to the points table.
+- **Layer ghosts:** a global toggle (a view setting, off by default) draws the contribution of each enabled layer on its own (including its invert, excluding normalise) as a faint coloured line over the full 20 Hz to 20 kHz, behind the curve, evaluated on the dense grid of §3.4. Each ghost has a matching colour stripe on its layer row and the layer title as a tooltip.
 - **Layers:** each layer row has an on/off switch, expandable controls, delete and reorder. Order doesn't change the sum but does help readability.
 - **Points table:** shows the exported points, i.e. the evaluated curve on the output grid. "Edit points" opens the points-layer table, which is the input points.
 - **Import:** by file picker or drag-and-drop onto the plot. After import, the grid mode is `original`, the points layer holds the file's data, the header fills the properties panel, and `original` is set for the overlay.

@@ -1,6 +1,5 @@
 // Hand-written SVG plot: log frequency axis, tolerance band, overlay, hover readout.
 // DOM code only; all numbers come from the pure maths modules.
-import { NOMINAL_3 } from "./curve.js";
 import { interpPoints } from "./layers.js";
 import { smaartToPicker } from "./formats/smaart.js";
 
@@ -10,11 +9,17 @@ const H = 440;
 const M = { l: 54, r: 18, t: 16, b: 36 };
 const PW = W - M.l - M.r;
 const PH = H - M.t - M.b;
-const FMIN = 20;
-const FMAX = 20000;
-const OCTAVES = Math.log2(FMAX / FMIN);
-const MAJOR = [31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000];
-const MAJOR_LABEL = { 1000: "1k", 2000: "2k", 4000: "4k", 8000: "8k", 16000: "16k" };
+// The visible frequency range is set on every render (the app keeps it at the full 20 Hz to 20 kHz).
+let FMIN = 20;
+let FMAX = 20000;
+let OCTAVES = Math.log2(FMAX / FMIN);
+// Octave tick frequencies (labelled) and the 1/3-octave preferred series (minor lines), over several decades.
+const MAJOR_ALL = [1, 2, 4, 8, 16, 31.5, 63, 125, 250, 500, 1000, 2000, 4000, 8000, 16000, 31500, 63000];
+const THIRDS = [];
+for (const decade of [0.1, 1, 10, 100, 1000, 10000, 100000]) {
+  for (const s of [1, 1.25, 1.6, 2, 2.5, 3.15, 4, 5, 6.3, 8]) THIRDS.push(+(s * decade).toPrecision(5));
+}
+const tickLabel = (f) => (f >= 1000 ? `${+(f / 1000).toPrecision(3)}k` : String(f));
 
 function el(name, attrs = {}, text) {
   const e = document.createElementNS(NS, name);
@@ -96,12 +101,17 @@ export function createPlot(svg, callbacks = {}) {
       layers.grid.append(el("line", { x1: M.l, x2: M.l + PW, y1: yOf(g), y2: yOf(g), class: g === 0 ? "zero" : "major" }));
       layers.grid.append(el("text", { x: M.l - 8, y: yOf(g) + 4, class: "tick", "text-anchor": "end" }, `${g > 0 ? "+" : g < 0 ? "−" : ""}${Math.abs(g)}`));
     }
-    for (const f of NOMINAL_3) {
-      if (!MAJOR.includes(f)) layers.grid.append(el("line", { x1: xOf(f), x2: xOf(f), y1: M.t, y2: M.t + PH, class: "minor" }));
+    const inView = (f) => f >= FMIN * (1 - 1e-9) && f <= FMAX * (1 + 1e-9);
+    const majors = MAJOR_ALL.filter(inView);
+    const minors = THIRDS.filter((f) => inView(f) && !MAJOR_ALL.includes(f));
+    for (const f of minors) {
+      layers.grid.append(el("line", { x1: xOf(f), x2: xOf(f), y1: M.t, y2: M.t + PH, class: "minor" }));
+      // a narrow trimmed range has few octave marks, so label the 1/3-octave ones too
+      if (majors.length < 4) layers.grid.append(el("text", { x: xOf(f), y: H - 14, class: "tick", "text-anchor": "middle" }, tickLabel(f)));
     }
-    for (const f of MAJOR) {
+    for (const f of majors) {
       layers.grid.append(el("line", { x1: xOf(f), x2: xOf(f), y1: M.t, y2: M.t + PH, class: "major" }));
-      layers.grid.append(el("text", { x: xOf(f), y: H - 14, class: "tick", "text-anchor": "middle" }, MAJOR_LABEL[f] ?? String(f)));
+      layers.grid.append(el("text", { x: xOf(f), y: H - 14, class: "tick", "text-anchor": "middle" }, tickLabel(f)));
     }
     layers.grid.append(el("text", { x: M.l + PW, y: H - 2, class: "axis", "text-anchor": "end" }, "Hz"));
     layers.grid.append(el("text", { x: 4, y: M.t + 8, class: "axis" }, "dB"));
@@ -111,11 +121,14 @@ export function createPlot(svg, callbacks = {}) {
   const path = (pts) => pts.map(([f, g], i) => `${i ? "L" : "M"}${xOf(f).toFixed(2)},${yOf(g).toFixed(2)}`).join(" ");
 
   /**
-   * @param {{points: number[][], original?: number[][]|null, yRange?: number|null, yOffset?: number, hidePoints?: boolean, color: string, line: number,
+   * @param {{points: number[][], original?: number[][]|null, yRange?: number|null, yOffset?: number, hidePoints?: boolean, fmin?: number, fmax?: number, ghosts?: {points: number[][], hue: number, title: string}[], extra?: (f: number) => string, color: string, line: number,
    *          tolerance: number, useTolerance: boolean, show: boolean, description: string}} m
    */
   function render(m) {
     model = m;
+    FMIN = Number(m.fmin) > 0 ? Number(m.fmin) : 20;
+    FMAX = Number(m.fmax) > FMIN ? Number(m.fmax) : Math.max(FMIN * 2, 20000);
+    OCTAVES = Math.log2(FMAX / FMIN);
     const curves = [m.points];
     if (m.original) curves.push(m.original);
     if (!drag) {
@@ -128,6 +141,12 @@ export function createPlot(svg, callbacks = {}) {
     drawGrid();
     const g = layers.clipped;
     g.replaceChildren();
+    // Layer ghosts: each layer's own contribution, faint and behind everything else.
+    for (const gh of m.ghosts ?? []) {
+      const p = el("path", { d: path(gh.points), class: "ghost", style: `stroke: hsl(${gh.hue} 70% var(--ghost-l, 62%))` });
+      p.append(el("title", {}, gh.title));
+      g.append(p);
+    }
     if (m.original && m.original.length > 1) {
       g.append(el("path", { d: path(m.original), class: "original" }));
     }
@@ -243,7 +262,8 @@ export function createPlot(svg, callbacks = {}) {
     hoverDot.setAttribute("cy", Math.min(M.t + PH, Math.max(M.t, yOf(g))));
     hoverLine.setAttribute("visibility", "visible");
     hoverDot.setAttribute("visibility", "visible");
-    readout.textContent = `${formatHz(f)}  ${formatDb(g)}`;
+    const extra = model.extra ? model.extra(f) : "";
+    readout.textContent = `${formatHz(f)}  ${formatDb(g)}${extra ? `  ${extra}` : ""}`;
   }
   svg.addEventListener("pointermove", onMove);
   function hideHover() {

@@ -1,6 +1,10 @@
 # Release notes
 
 ## Unreleased
+- Note names and wavelength options above the plot: the hover readout and the points table can show the nearest musical note (A4 = 440 Hz, with cents) and the wavelength at 343 m/s. Display only, never exported.
+- Layer ghosts: a global toggle above the plot draws each enabled layer's own contribution as a faint coloured line behind the curve, with a matching colour stripe on its row in the layer list. A view setting only; it is not exported.
+- Low trim and high trim in the Output grid section: crop the preview and the exported points to a frequency range (SPEC §3.5). Empty by default, so imported files still export unchanged. The plot axis stays at the full range; only the curve is cropped.
+- Shape layer: pyramid (triangle), box (square), half circle, trapezoid, cosine bump, parabola, rising and falling ramps (sawtooth), sine wave, square wave and staircase, with a centre, a base width in octaves and a height of ±dB. See SPEC §4.4g.
 - Bell filter width can be entered as Q or as bandwidth in octaves (between the half-gain points). The layer title shows both.
 - Weighting layer (A, C, RIAA, FM pre-emphasis) and an Invert button on every layer, with presets for them.
 - Cinema X-curve presets from SMPTE ST 202:2010 Table 1 (medium theatre) and the Table A.1 size corrections (small and large). Sources in `docs/REFERENCE_CURVES.md`.

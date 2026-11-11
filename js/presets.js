@@ -135,7 +135,7 @@ function cinemaPresets() {
       d.props.line = 3;
       d.props.tolerance = 3;
       d.props.useTolerance = 1;
-      d.grid = { mode: "resample", fraction: 3, fmin: 31.5, fmax: 16000 }; // the range Table 1 defines
+      d.grid = { mode: "resample", fraction: 3, fmin: 20, fmax: 20000, trimLow: 31.5, trimHigh: 16000 }; // trimmed to the range Table 1 defines
       d.layers.find((l) => l.kind === "points").points = SMPTE_ST202_TABLE_1.map((p) => [...p]);
       if (seats) {
         const [c4, c8] = SIZE_CORRECTION[seats];

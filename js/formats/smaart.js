@@ -2,7 +2,7 @@
 // Pure module: no DOM access. Rules are in docs/SPEC.md §5 and §6.
 import { round6 } from "../curve.js";
 import { FILTERS, LAYER_LIMITS } from "../layers.js";
-import { WEIGHTINGS } from "../eq.js";
+import { WEIGHTINGS, SHAPES } from "../eq.js";
 
 /** Known header keys (lower case) in canonical order. */
 const KNOWN = ["line", "color", "show", "type", "tolerance", "usetolerance", "offset"];
@@ -255,6 +255,19 @@ export function validateTf(doc, points) {
     }
     if (layer.kind === "weighting" && layer.on !== false && !(typeof layer.curve === "string" && Object.hasOwn(WEIGHTINGS, layer.curve))) {
       err(`Weighting: unknown curve "${layer.curve}".`);
+    }
+    if (layer.kind === "shape" && layer.on !== false) {
+      if (!(typeof layer.shape === "string" && Object.hasOwn(SHAPES, layer.shape))) err(`Shape: unknown shape "${layer.shape}".`);
+      if (!(Number(layer.fc) > 0)) err("Shape: centre frequency must be greater than 0 Hz.");
+      const [wlo, whi] = LAYER_LIMITS.width;
+      if (!(Number(layer.width) >= wlo && Number(layer.width) <= whi)) err(`Shape: width must be between ${wlo} and ${whi} octaves.`);
+      if (!(Math.abs(Number(layer.db)) <= LAYER_LIMITS.db[1])) err(`Shape: height must be between ${LAYER_LIMITS.db[0]} and +${LAYER_LIMITS.db[1]} dB.`);
+      if (layer.count !== undefined && !(Number(layer.count) >= LAYER_LIMITS.count[0] && Number(layer.count) <= LAYER_LIMITS.count[1])) {
+        err(`Shape: cycles or steps must be between ${LAYER_LIMITS.count[0]} and ${LAYER_LIMITS.count[1]}.`);
+      }
+      if (layer.shape === "trapezoid" && !(Number(layer.flat ?? 0.5) >= LAYER_LIMITS.flat[0] && Number(layer.flat ?? 0.5) <= LAYER_LIMITS.flat[1])) {
+        err(`Shape: flat top must be between ${LAYER_LIMITS.flat[0]} and ${LAYER_LIMITS.flat[1]}.`);
+      }
     }
     const extra = { bell: ["Bell", "q", LAYER_LIMITS.q], hill: ["Hill", "width", LAYER_LIMITS.width], rHpf: ["Resonant HPF", "q", LAYER_LIMITS.resonantQ], rLpf: ["Resonant LPF", "q", LAYER_LIMITS.resonantQ] }[layer.kind];
     if (extra && layer.on !== false) {

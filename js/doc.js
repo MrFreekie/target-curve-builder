@@ -1,7 +1,7 @@
 // Document model: defaults, layer factories, validation of loaded documents, and import.
 // Pure module: no DOM access, importable from Node.
 import { FILTERS, LAYER_LIMITS, interpPoints } from "./layers.js";
-import { WEIGHTINGS } from "./eq.js";
+import { WEIGHTINGS, SHAPES } from "./eq.js";
 import { detectFormat } from "./formats/index.js";
 import { sanitiseFileName } from "./formats/smaart.js";
 
@@ -17,6 +17,7 @@ export const LAYER_KINDS = {
   rHpf: "Resonant HPF (2nd order)",
   rLpf: "Resonant LPF (2nd order)",
   weighting: "Weighting (A, C, RIAA, FM)",
+  shape: "Shape (pyramid, box, half circle...)",
   hpf: "HPF",
   lpf: "LPF",
   gain: "Gain",
@@ -68,6 +69,7 @@ export function newLayer(kind) {
     case "rHpf": return { ...base, fc: 40, q: 1 };
     case "rLpf": return { ...base, fc: 16000, q: 1 };
     case "weighting": return { ...base, curve: "A" };
+    case "shape": return { ...base, shape: "pyramid", fc: 1000, width: 2, db: 6, flat: 0.5, count: 3 };
     case "hpf": return { ...base, fc: 32, type: "LR", slope: 48 };
     case "lpf": return { ...base, fc: 16000, type: "LR", slope: 24 };
     default: return { ...base, kind: "gain", db: 0 };
@@ -128,6 +130,15 @@ function loadLayer(l) {
       out.fc = num(l.fc, "centre frequency", { positive: true });
       out.width = ranged(num(l.width, "width"), LAYER_LIMITS.width, "width");
       out.db = ranged(num(l.db, "gain"), LAYER_LIMITS.db, "gain");
+      break;
+    case "shape":
+      if (typeof l.shape !== "string" || !Object.hasOwn(SHAPES, l.shape)) throw new Error(`Unknown shape ${l.shape}.`);
+      out.shape = l.shape;
+      out.fc = num(l.fc, "centre frequency", { positive: true });
+      out.width = ranged(num(l.width, "width"), LAYER_LIMITS.width, "width");
+      out.db = ranged(num(l.db, "height"), LAYER_LIMITS.db, "height");
+      out.flat = l.flat === undefined ? 0.5 : ranged(num(l.flat, "flat top"), LAYER_LIMITS.flat, "flat top");
+      out.count = l.count === undefined ? 3 : ranged(num(l.count, "cycles or steps"), LAYER_LIMITS.count, "cycles or steps");
       break;
     case "weighting":
       if (typeof l.curve !== "string" || !Object.hasOwn(WEIGHTINGS, l.curve)) throw new Error(`Unknown weighting curve ${l.curve}.`);
@@ -201,6 +212,14 @@ export function loadDoc(obj) {
   if (Number.isFinite(g.fmin) && g.fmin >= 1) grid.fmin = g.fmin;
   if (Number.isFinite(g.fmax) && g.fmax >= grid.fmin) grid.fmax = g.fmax;
   if (grid.fmax < grid.fmin) { grid.fmin = base.grid.fmin; grid.fmax = base.grid.fmax; } // fmin above the default fmax
+  // Trim (SPEC §3.5): optional low and high limits for the output and the plot; both kept only if they make sense.
+  const okTrim = (v) => Number.isFinite(v) && v >= 1 && v <= 100000;
+  const lowT = okTrim(g.trimLow) ? g.trimLow : undefined;
+  const highT = okTrim(g.trimHigh) ? g.trimHigh : undefined;
+  if (!(lowT !== undefined && highT !== undefined && lowT >= highT)) {
+    if (lowT !== undefined) grid.trimLow = lowT;
+    if (highT !== undefined) grid.trimHigh = highT;
+  }
   const originalProps = isObj(obj.originalProps) ? loadProps(obj.originalProps) : null;
   const original = obj.original === null || obj.original === undefined ? null : loadPoints(obj.original);
   grid.mode = g.mode === "original" && original ? "original" : g.mode === "simplified" ? "simplified" : "resample";
