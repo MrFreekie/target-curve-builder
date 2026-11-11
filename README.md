@@ -44,3 +44,9 @@ python3 -I reference/curve_ref.py --check
 - `docs/SMAART_NOTES.md`: what we know about how Smaart reads `.crv` files, and the open checks.
 - `docs/REFERENCE_CURVES.md`: where each built-in reference curve comes from.
 - `docs/RELEASE_NOTES.md`: what is in each release.
+
+## Licence
+
+Free to use, copy, change and fork for any non-commercial purpose, under the [PolyForm Noncommercial License 1.0.0](LICENSE.md). Commercial use is not allowed. This is a source-available licence, not an open-source one.
+
+Required Notice: Copyright (c) 2026 MrFreekie (https://github.com/MrFreekie/target-curve-builder)
