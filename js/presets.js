@@ -153,6 +153,48 @@ function cinemaPresets() {
   ];
 }
 
+/** Frequency in Hz at `o` octaves above 20 Hz, to 2 decimals. Presets keep their points off the nominal 1/3-octave labels, which the plot snaps differently (SPEC 3.1). */
+const hz = (o) => Math.round(20 * 2 ** o * 100) / 100;
+
+/**
+ * Points for a run of flat-topped blocks with near-vertical sides (a skyline, a castle wall).
+ * @param {number[][]} blocks [[width in octaves, height in dB], ...] side by side
+ * @param {number} start Where the first block begins, in octaves above 20 Hz.
+ * @param {number} scale Multiplies every width.
+ * @returns {number[][]} [[hz, db], ...]
+ */
+function blockPoints(blocks, start, scale) {
+  const edge = 0.03; // each side climbs over this many octaves, so it is steep but still a function of frequency
+  const pts = [[20, 0]];
+  let x = start;
+  let prev = 0;
+  for (const [w, h] of blocks) {
+    pts.push([hz(x), prev], [hz(x + edge), h]);
+    prev = h;
+    x += w * scale;
+  }
+  pts.push([hz(x), prev], [hz(x + edge), 0], [20000, 0]);
+  return pts;
+}
+
+/** [octaves above 20 Hz, dB] points moved along by `shift` octaves, as [hz, db]. */
+const placed = (rel, shift) => rel.map(([o, db]) => [hz(o + shift), db]);
+
+/** One heartbeat: small P wave, dip, tall R spike, deeper dip, then the T wave. */
+const BEAT = [[0, 0], [0.3, 1.5], [0.6, 0], [1, 0], [1.2, -3], [1.45, 14], [1.7, -6], [1.9, 0], [2.3, 0], [2.7, 2.5], [3.1, 0]];
+
+/** Fun curves drawn as points: [menu name, curve name, colour, points]. */
+const FUN_POINTS = [
+  ["Skyline (fun: city buildings)", "Skyline", "ff4b5d78",
+    blockPoints([[0.6, 6], [0.4, 10], [0.5, 4], [0.2, 0], [0.3, 12], [0.7, 8], [0.4, 14], [0.5, 5], [0.6, 9], [0.4, 3], [0.5, 11], [0.6, 7]], 0.8, 1.5)],
+  ["Heartbeat (fun: ECG trace)", "Heartbeat", "ffd62839",
+    [[20, 0], ...placed(BEAT, 0.81), ...placed(BEAT, 5), [20000, 0]]],
+  ["Mountain range (fun: jagged ridge)", "Mountain range", "ff3f7d58",
+    [[20, 0], ...[[0.8, 4], [1.2, 2], [1.9, 9], [2.3, 6], [2.8, 13], [3.2, 8], [3.6, 11], [4.2, 3], [4.7, 7], [5.3, 15], [5.7, 9], [6.2, 12], [6.8, 4], [7.5, 8], [8.1, 2], [8.8, 5], [9.4, 1]].map(([o, db]) => [hz(o), db]), [20000, 0]]],
+  ["Castle (fun: crenellations)", "Castle", "ff8d6e4b",
+    blockPoints([[0.35, 10], [0.2, 4], [0.25, 10], [0.3, 4], [0.4, 10], [0.2, 4], [0.3, 10], [0.25, 4], [0.35, 10], [0.2, 4], [0.25, 10], [0.3, 4], [0.4, 10]], 1.01, 2)],
+];
+
 /** Presets that ship with the app. Each `build()` returns a fresh document. */
 export const BUILT_IN_PRESETS = [
   {
@@ -207,4 +249,16 @@ export const BUILT_IN_PRESETS = [
     },
   })),
   ...cinemaPresets(),
+  ...FUN_POINTS.map(([name, title, colour, points]) => ({
+    name,
+    build() {
+      const d = newDoc();
+      d.props.name = title;
+      d.props.line = 3;
+      d.props.color = colour;
+      d.layers.find((l) => l.kind === "points").points = points.map((p) => [...p]);
+      d.grid = { mode: "simplified", fraction: 12, fmin: 20, fmax: 20000, epsilon: 0.05 }; // the corners only
+      return d;
+    },
+  })),
 ];

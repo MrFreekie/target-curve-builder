@@ -189,6 +189,9 @@ export function weightingDb(curve, f) {
 }
 
 // ---------------------------------------------------------------- Shapes
+/** Where the tip of the shark fin sits along its base, as t from 0 (left edge) to 1 (right edge). */
+export const FIN_TIP_T = 0.6;
+
 /**
  * Fun shapes drawn on the graph against log frequency: u = log2(f/fc) / (width/2), so the shape spans
  * u from -1 to +1 (the full base width, in octaves) and is 0 outside. `db` is the height (negative for a dip).
@@ -207,6 +210,11 @@ export const SHAPES = {
   rampDown: { label: "Ramp down (sawtooth)", countLabel: null, value: (u) => (1 - u) / 2 },
   sine: { label: "Sine wave", countLabel: "Cycles", value: (u, flat, count) => Math.sin(Math.PI * count * (u + 1)) },
   square: { label: "Square wave", countLabel: "Cycles", value: (u, flat, count) => (Math.sin(Math.PI * count * (u + 1)) >= 0 ? 1 : -1) },
+  fin: { label: "Shark fin", countLabel: null, value: (u) => {
+    // a bulging sweep up to the tip, then a steeper, hollow drop back to the base
+    const t = (u + 1) / 2;
+    return t <= FIN_TIP_T ? Math.sin((Math.PI / 2) * (t / FIN_TIP_T)) : ((1 - t) / (1 - FIN_TIP_T)) ** 2;
+  } },
   stairs: { label: "Staircase (rising)", countLabel: "Steps", value: (u, flat, count) => {
     const n = Math.max(2, Math.round(count));
     return Math.min(n - 1, Math.floor(((u + 1) / 2) * n)) / (n - 1);

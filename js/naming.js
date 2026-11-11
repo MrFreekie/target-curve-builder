@@ -23,7 +23,7 @@ function rawParts(l) {
     case "mesa":
       return l.db ? [`Mesa${l.db > 0 ? "+" : ""}${n(l.db)}dB_${n(l.fLow)}-${n(l.fHigh)}Hz_${n(l.wLow)}-${n(l.wHigh)}oct`] : [];
     case "shape": {
-      const names = { pyramid: "Pyramid", box: "Box", semicircle: "HalfCircle", trapezoid: "Trapezoid", cosine: "Cosine", parabola: "Parabola", rampUp: "RampUp", rampDown: "RampDown", sine: "Sine", square: "Square", stairs: "Stairs" };
+      const names = { pyramid: "Pyramid", box: "Box", semicircle: "HalfCircle", trapezoid: "Trapezoid", cosine: "Cosine", parabola: "Parabola", rampUp: "RampUp", rampDown: "RampDown", sine: "Sine", square: "Square", stairs: "Stairs", fin: "SharkFin" };
       const name = Object.hasOwn(names, l.shape) ? names[l.shape] : "Shape";
       const extra = l.shape === "stairs" ? `_${n(l.count)}steps` : l.shape === "sine" || l.shape === "square" ? `_${n(l.count)}cyc` : "";
       return l.db ? [`${name}${l.db > 0 ? "+" : ""}${n(l.db)}dB_${n(l.fc)}Hz_${n(l.width)}oct${extra}`] : [];
