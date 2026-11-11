@@ -25,6 +25,6 @@ jobs:
       - name: Reference self-check
         run: python3 -I reference/curve_ref.py --check
       - name: JS tests
-        run: node --test tests/
+        run: node --test "tests/*.test.mjs"
       - name: Browser tests (headless Chrome)
         run: node e2e/smoke.mjs

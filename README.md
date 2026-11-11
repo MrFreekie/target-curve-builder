@@ -37,7 +37,7 @@ python3 -m http.server 8000     # then open http://localhost:8000
 
 ## Tests
 ```bash
-node --test tests/
+node --test "tests/*.test.mjs"
 python3 -I reference/curve_ref.py --check
 node e2e/smoke.mjs     # browser tests: needs Node 22+ and Chrome, Chromium or Edge (set CHROME to its path if not found)
 ```
