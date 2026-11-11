@@ -4,19 +4,25 @@ on:
   push:
   pull_request:
 
+# The workflow only reads the repository: no write access for the token.
+permissions:
+  contents: read
+
 jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      # Actions are pinned to commit SHAs so a moved tag can't change what runs.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: "20"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
         with:
           python-version: "3.12"
       - name: Reference self-check
         run: python3 -I reference/curve_ref.py --check
       - name: JS tests
-        run: |
-          if ls tests/*.test.mjs >/dev/null 2>&1; then node --test tests/; else echo "no JS tests yet"; fi
+        run: node --test tests/

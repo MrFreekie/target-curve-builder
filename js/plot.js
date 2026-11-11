@@ -143,7 +143,8 @@ export function createPlot(svg, callbacks = {}) {
     g.replaceChildren();
     // Layer ghosts: each layer's own contribution, faint and behind everything else.
     for (const gh of m.ghosts ?? []) {
-      const p = el("path", { d: path(gh.points), class: "ghost", style: `stroke: hsl(${gh.hue} 70% var(--ghost-l, 62%))` });
+      const p = el("path", { d: path(gh.points), class: "ghost" });
+      p.style.stroke = `hsl(${Number(gh.hue) || 0} 70% var(--ghost-l, 62%))`; // set through the CSSOM so the page needs no inline styles
       p.append(el("title", {}, gh.title));
       g.append(p);
     }

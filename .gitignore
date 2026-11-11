@@ -7,3 +7,14 @@ Thumbs.db
 desktop.ini
 .vscode/
 .idea/
+
+# Local AI-assistant instructions, agents and notes: kept on the developer's machine, not published
+.claude/
+CLAUDE.md
+HANDOVER_PROMPT.md
+docs/HANDOVER_PROMPT.md
+docs/BUILD_PLAN.md
+reference/make_tilt_crv.py
+# Local tests output and editor scratch
+*.log
+*.tmp

@@ -41,7 +41,6 @@ python3 -I reference/curve_ref.py --check
 
 ## Docs
 - `docs/SPEC.md`: requirements, maths, file format, UI.
-- `docs/BUILD_PLAN.md`: phases, agents, models and effort.
 - `docs/SMAART_NOTES.md`: what we know about how Smaart reads `.crv` files, and the open checks.
 - `docs/REFERENCE_CURVES.md`: where each built-in reference curve comes from.
 - `docs/RELEASE_NOTES.md`: what is in each release.

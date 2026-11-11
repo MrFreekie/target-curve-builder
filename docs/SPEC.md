@@ -2,7 +2,7 @@
 
 A single-page web app, hosted on GitHub Pages, for building, importing, visualising and editing sound system tuning target curves. It exports **one file at a time**, primarily Smaart transfer function target curves (`.crv`). The design leaves room for more formats and filter types later.
 
-The maths in this spec is implemented independently in `reference/curve_ref.py`. Expected outputs are in `reference/golden.json`. If this spec and the reference disagree, stop and raise it. Do not quietly "fix" either one.
+The maths in this spec is implemented independently in `reference/curve_ref.py`. Expected outputs are in `reference/golden.json`. If this spec and the reference disagree, one of them has a bug: it is raised and resolved, not worked around.
 
 ---
 

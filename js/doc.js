@@ -234,7 +234,7 @@ export function loadDoc(obj) {
   const grid = { ...base.grid };
   if (FRACTIONS.includes(Number(g.fraction))) grid.fraction = Number(g.fraction);
   if (Number.isFinite(g.fmin) && g.fmin >= 1) grid.fmin = g.fmin;
-  if (Number.isFinite(g.fmax) && g.fmax >= grid.fmin) grid.fmax = g.fmax;
+  if (Number.isFinite(g.fmax) && g.fmax >= grid.fmin && g.fmax <= 100000) grid.fmax = g.fmax; // same limit as the trim
   if (grid.fmax < grid.fmin) { grid.fmin = base.grid.fmin; grid.fmax = base.grid.fmax; } // fmin above the default fmax
   // Trim (SPEC §3.5): optional low and high limits for the output and the plot; both kept only if they make sense.
   const okTrim = (v) => Number.isFinite(v) && v >= 1 && v <= 100000;

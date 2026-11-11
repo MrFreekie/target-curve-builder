@@ -29,7 +29,8 @@ export function smaartToPicker(color) {
 
 /** Remove characters Windows and macOS don't allow in file names. */
 export function sanitiseFileName(name) {
-  let s = String(name ?? "").replace(/[\\/:*?"<>|\x00-\x1f]/g, "");
+  // A file name is never longer than 255 characters, and the trimming below is quadratic on very long input.
+  let s = String(name ?? "").slice(0, 255).replace(/[\\/:*?"<>|\x00-\x1f]/g, "");
   const trimEnd = () => {
     let prev;
     do {
@@ -76,7 +77,11 @@ function canonicalLine(key, value) {
 
 /** Is this line a header line ("Key: value") rather than a data row? */
 function isHeaderLine(line) {
-  return /^[A-Za-z][A-Za-z0-9_ ]*\s*:/.test(line);
+  // Split at the first colon and test the key on its own. (One regex over the whole line backtracked
+  // quadratically on a long run of spaces, which is a way to freeze the page with a crafted file.)
+  const colon = line.indexOf(":");
+  if (colon < 1) return false;
+  return /^[A-Za-z][A-Za-z0-9_ ]*$/.test(line.slice(0, colon).trimEnd());
 }
 
 /**

@@ -35,7 +35,6 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 input[type="color"] { width: 56px; height: 40px; padding: 2px; background: var(--panel2); border: 1px solid var(--border); border-radius: 6px; }
 input[type="checkbox"], input[type="radio"] { width: 28px; height: 28px; margin: 8px; accent-color: var(--accent); }
 input[aria-invalid="true"] { border-color: var(--danger); outline: 2px solid var(--danger); }
-.hint-bad { color: var(--danger); font-size: 0.85rem; grid-column: 1 / -1; }
 
 .layout { display: grid; grid-template-columns: 340px 1fr; gap: 16px; padding: 16px; align-items: start; }
 .side, .main { display: flex; flex-direction: column; gap: 16px; min-width: 0; }
