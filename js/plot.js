@@ -51,7 +51,9 @@ export function formatDb(g) {
  */
 export function createPlot(svg, callbacks = {}) {
   svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-  svg.setAttribute("role", "img");
+  // a group, not an image: the point handles inside are sliders and must stay reachable by screen readers
+  svg.setAttribute("role", "group");
+  svg.setAttribute("aria-label", "Target curve plot");
   svg.setAttribute("preserveAspectRatio", "xMidYMid meet");
   const clipId = "plot-clip";
   let model = null;

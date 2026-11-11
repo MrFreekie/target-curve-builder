@@ -52,8 +52,8 @@
 
       <section aria-labelledby="h-layers">
         <h2 id="h-layers">Layers</h2>
-        <div id="layer-tabs" class="tabs" role="tablist" aria-label="Layer groups"></div>
-        <div id="tab-panel" class="tab-panel" role="tabpanel">
+        <div id="layer-tabs" class="tabs" role="group" aria-label="Layer groups"></div>
+        <div id="tab-panel" class="tab-panel" role="group">
           <div id="group-head" class="group-head"></div>
           <ul id="layers" class="layers"></ul>
           <div class="add">
@@ -66,7 +66,7 @@
 
       <section aria-labelledby="h-grid">
         <h2 id="h-grid">Output grid</h2>
-        <button type="button" id="btn-lines" aria-pressed="false" class="wide">Hide points (lines only)</button>
+        <button type="button" id="btn-lines" aria-pressed="true" class="wide toggle">Points on plot</button>
         <fieldset id="grid-modes">
           <legend class="sr-only">Output grid resolution</legend>
         </fieldset>
@@ -89,11 +89,11 @@
         <input id="yoff" type="range" min="-20" max="20" step="1" value="0" aria-describedby="yoff-val">
         <output id="yoff-val" for="yoff">0 dB</output>
         <button type="button" id="yoff-reset">Centre</button>
-        <button type="button" id="btn-ghosts" aria-pressed="false">Layer ghosts: off</button>
-        <button type="button" id="btn-notes" aria-pressed="false">Note names: off</button>
-        <button type="button" id="btn-wave" aria-pressed="false" title="Wavelength = 343 m/s divided by frequency">Wavelength: off</button>
+        <button type="button" id="btn-ghosts" class="toggle" aria-pressed="false">Layer ghosts</button>
+        <button type="button" id="btn-notes" class="toggle" aria-pressed="false">Note names</button>
+        <button type="button" id="btn-wave" class="toggle" aria-pressed="false" title="Wavelength = 343 m/s divided by frequency">Wavelength</button>
       </div>
-      <svg id="plot" class="plot" aria-describedby="points-table"><title>Target curve plot</title></svg>
+      <div class="plot-scroll"><svg id="plot" class="plot" aria-describedby="points-table"><title>Target curve plot</title></svg></div>
       <p class="note" id="handle-hint"></p>
       <p class="note">Dashed curve line: Enable is off. Dashed grey line: the imported original.</p>
       <section aria-labelledby="h-table">
@@ -124,7 +124,7 @@
     <div class="actions">
       <button type="button" id="imp-replace" class="primary">Replace the current curve</button>
       <button type="button" id="imp-add">Add as a layer</button>
-      <button type="button" id="imp-cancel">Cancel</button>
+      <button type="button" id="imp-cancel" autofocus>Cancel</button>
     </div>
     <p class="note"><strong>Replace</strong> opens the file as the curve, with its own name, colour and header. <strong>Add as a layer</strong> keeps your curve and adds the file's points as a new Points layer that sums with the other layers. Both can be undone.</p>
   </dialog>

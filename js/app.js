@@ -496,7 +496,7 @@ function startApp() {
       on.checked = l.on;
       const label = `${layerTitle(l)}, layer ${pos + 1} of ${mine.length}`;
       on.dataset.action = "on";
-      on.setAttribute("aria-label", `${label}: on`);
+      on.setAttribute("aria-label", label);
       on.addEventListener("change", () => { l.on = on.checked; li.classList.toggle("off", !l.on); stripe(li, l, i); update(); });
       const title = document.createElement("button");
       title.type = "button";
@@ -585,8 +585,6 @@ function startApp() {
         b.type = "button";
         b.id = `tab-${n}`;
         b.className = "tab";
-        b.setAttribute("role", "tab");
-        b.setAttribute("aria-controls", "tab-panel");
         b.append(Object.assign(document.createElement("span"), { className: "tab-name" }), Object.assign(document.createElement("span"), { className: "tab-count" }));
         b.addEventListener("click", () => selectTab(n));
         b.addEventListener("keydown", (ev) => {
@@ -623,9 +621,9 @@ function startApp() {
       const eye = $(`eye-${n}`);
       eye.replaceChildren(eyeIcon(!hidden));
       eye.setAttribute("aria-pressed", String(!hidden));
-      eye.setAttribute("aria-label", `${tabName(n)}: ${hidden ? "hidden. Press to show its layers" : "shown. Press to hide its layers"}`);
+      eye.setAttribute("aria-label", `Show layers in ${tabName(n)}`);
       eye.title = hidden ? "Show this group" : "Hide this group";
-      b.setAttribute("aria-selected", String(n === activeTab));
+      if (n === activeTab) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
       b.tabIndex = n === activeTab ? 0 : -1;
       b.setAttribute("aria-label", `${tabName(n)}, ${count} layer${count === 1 ? "" : "s"}${hidden ? ", hidden" : ""}`);
     }
@@ -633,7 +631,7 @@ function startApp() {
     $("btn-add").setAttribute("aria-label", `Add layer to ${tabName(activeTab)}`);
   }
 
-  /** The group's name box and Shown/Hidden button, at the top of its tab. */
+  /** The group's name box and Show layers toggle, at the top of its tab. */
   function renderGroupHead() {
     const host = $("group-head");
     host.replaceChildren();
@@ -654,8 +652,8 @@ function startApp() {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.setAttribute("aria-pressed", String(g.on !== false));
-    btn.textContent = g.on !== false ? "Shown" : "Hidden";
-    btn.setAttribute("aria-label", `${g.name}: ${g.on !== false ? "shown. Press to hide" : "hidden. Press to show"}`);
+    btn.textContent = "Show layers";
+    btn.className = "toggle";
     btn.addEventListener("click", () => {
       g.on = g.on === false;
       renderGroupHead();
@@ -773,7 +771,6 @@ function startApp() {
   }
   const applyGhostsUi = () => {
     $("btn-ghosts").setAttribute("aria-pressed", String(ghostsOn));
-    $("btn-ghosts").textContent = `Layer ghosts: ${ghostsOn ? "on" : "off"}`;
   };
   $("btn-ghosts").addEventListener("click", () => {
     ghostsOn = !ghostsOn;
@@ -796,9 +793,7 @@ function startApp() {
   } catch { /* storage unavailable */ }
   const applyPitchUi = () => {
     $("btn-notes").setAttribute("aria-pressed", String(notesOn));
-    $("btn-notes").textContent = `Note names: ${notesOn ? "on" : "off"}`;
     $("btn-wave").setAttribute("aria-pressed", String(waveOn));
-    $("btn-wave").textContent = `Wavelength: ${waveOn ? "on" : "off"}`;
   };
   for (const [id, key, flip] of [["btn-notes", "tcb-notes", () => { notesOn = !notesOn; return notesOn; }], ["btn-wave", "tcb-wave", () => { waveOn = !waveOn; return waveOn; }]]) {
     $(id).addEventListener("click", () => {
@@ -814,8 +809,7 @@ function startApp() {
   let linesOnly = false;
   try { linesOnly = localStorage.getItem("tcb-lines") === "1"; } catch { /* storage unavailable */ }
   const applyLinesUi = () => {
-    $("btn-lines").setAttribute("aria-pressed", String(linesOnly));
-    $("btn-lines").textContent = linesOnly ? "Show points" : "Hide points (lines only)";
+    $("btn-lines").setAttribute("aria-pressed", String(!linesOnly)); // pressed means the points are shown
   };
   $("btn-lines").addEventListener("click", () => {
     linesOnly = !linesOnly;
