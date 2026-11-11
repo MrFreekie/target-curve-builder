@@ -1,6 +1,7 @@
 # Release notes
 
 ## v1.1.0 (2026-11-11)
+- Behind the scenes: the 1,300-line `app.js` is split into the Layers panel, Import (files, trace, shared links), Presets and a few small helpers, each in its own file, with more browser tests covering every layer type, the trace, import and presets.
 - Works offline: after the first visit the app opens with no network (a service worker keeps a copy), and it can be installed from the browser. It re-checks the server every time it is online, so an old copy is never used while a new one exists.
 - Search and sharing: a proper page title and description, a short About section, a preview image, a sitemap and robots file.
 - Browser regression tests (`node e2e/smoke.mjs`) drive a real headless Chrome or Edge through loading, import, editing, undo, shared links, a broken autosave, layout at four widths and offline start. They run in the project's checks on every push.

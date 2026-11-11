@@ -1,21 +1,25 @@
 // UI state and wiring. Maths lives in curve.js / layers.js; file formats in formats/.
 import { evaluate, effectiveRange, layerGhosts, visibleLayers } from "./curve.js";
 import { buildCrv } from "./build.js";
-import { FILTERS } from "./layers.js";
+
 import { getAdapter, writableAdapters } from "./formats/index.js";
-import { fmt6, pickerToSmaart, smaartToPicker, crvFileName, exportFileName } from "./formats/smaart.js";
+import { fmt6, pickerToSmaart, smaartToPicker, exportFileName } from "./formats/smaart.js";
 import { createPlot } from "./plot.js";
-import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf, resetToImport, isBlank, addImportedLayer, totalPoints, MAX_TOTAL_POINTS } from "./doc.js";
-import { WEIGHTINGS, SHAPES } from "./eq.js";
+import { newDoc, newLayer, convertToTf, resetToImport } from "./doc.js";
+
 import * as presets from "./presets.js";
 import { suggestName } from "./naming.js";
 import { randomContrastingColour } from "./colour.js";
-import { qToBw, bwToQ } from "./bandwidth.js";
+
 import { wavelengthLabel } from "./pitch.js";
-import { parseTrace, traceCurve, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT, MAX_TRACE_TEXT } from "./trace.js";
-import { encodeShare, decodeShare, LONG_LINK } from "./share.js";
+import { traceCurve } from "./trace.js";
+
 import { createHistory } from "./history.js";
 import { getPref, setPref } from "./prefs.js";
+import { parseNum, createBindNum } from "./parse.js";
+import { createLayersUi } from "./layers-ui.js";
+import { createImportUi } from "./import-ui.js";
+import { createPresetsUi } from "./presets-ui.js";
 
 export { newDoc, newLayer };
 
@@ -23,14 +27,6 @@ export { newDoc, newLayer };
 const TRIMS = [["trim-low", "trimLow", 20], ["trim-high", "trimHigh", 20000]];
 
 // ------------------------------------------------------------------ DOM wiring
-/** Parse "12", "-3.5" or "3,5". Rejects "1,000", "1e3", "0x10" and empty text (returns NaN). */
-function parseNum(s) {
-  const t = String(s).trim();
-  if (!/^[-+]?(\d+([.,]\d*)?|[.,]\d+)$/.test(t)) return NaN;
-  if (/^[-+]?\d{1,3},\d{3}$/.test(t)) return NaN; // "1,000" is ambiguous: thousands or decimal?
-  return Number(t.replace(",", "."));
-}
-
 function startApp() {
   const $ = (id) => document.getElementById(id);
   // "?fresh" in the address starts a new curve and forgets the autosave: the way out if a saved curve can't be opened.
@@ -112,8 +108,8 @@ function startApp() {
 
   function refreshAll(focus) {
     renderProps();
-    renderGroups();
-    renderLayers(focus);
+    layersUi.renderGroups();
+    layersUi.renderLayers(focus);
     update();
   }
 
@@ -132,493 +128,23 @@ function startApp() {
     // On an inverted layer the plotted curve moves the opposite way to the stored value.
     l.points[i][1] = Math.round((dragBase.db + (l.invert === true ? -dDb : dDb)) * 100) / 100;
     l.points[i][0] = hz !== null ? hz : dragBase.hz; // without Shift the frequency stays exactly as it was typed
-    if (expanded.has(l.id)) renderLayers();
+    if (expanded.has(l.id)) layersUi.renderLayers();
     update();
   }
   function dragEnd() {
     dragging = false;
     const l = pointsLayer();
     if (l) l.points.sort((a, b) => a[0] - b[0]);
-    renderLayers();
+    layersUi.renderLayers();
     update();
   }
   function nudge(i, d) {
     const l = pointsLayer();
     if (!l || !l.points[i]) return;
     l.points[i][1] = Math.round((l.points[i][1] + (l.invert === true ? -d : d)) * 100) / 100;
-    if (expanded.has(l.id)) renderLayers();
+    if (expanded.has(l.id)) layersUi.renderLayers();
     update();
   }
-  let uid = 0;
-  // How the bell's width is typed: "q" or "bw" (octaves). A view setting kept in this browser only.
-  let qMode = "q";
-  if (getPref("tcb-qmode") === "bw") qMode = "bw";
-
-  /** Text input bound to a number. `optional` lets an empty box mean null. */
-  function numField(label, value, onSet, { optional = false, placeholder = "", check = null } = {}) {
-    const id = `f${uid++}`;
-    const wrap = document.createElement("div");
-    wrap.className = "field";
-    const lab = document.createElement("label");
-    lab.htmlFor = id;
-    lab.textContent = label;
-    const input = document.createElement("input");
-    input.type = "text";
-    input.id = id;
-    input.inputMode = "decimal";
-    input.autocomplete = "off";
-    input.placeholder = placeholder;
-    input.value = value === null || value === undefined ? "" : String(value);
-    let lastGood = input.value;
-    input.addEventListener("input", () => {
-      const raw = input.value.trim();
-      const n = parseNum(raw);
-      if (raw === "" && optional) { input.removeAttribute("aria-invalid"); onSet(null); }
-      else if (Number.isFinite(n) && (!check || check(n))) { input.removeAttribute("aria-invalid"); onSet(n); }
-      else { input.setAttribute("aria-invalid", "true"); return; }
-      lastGood = input.value;
-      update();
-    });
-    input.addEventListener("blur", () => {
-      if (input.getAttribute("aria-invalid")) { input.value = lastGood; input.removeAttribute("aria-invalid"); }
-    });
-    wrap.append(lab, input);
-    return wrap;
-  }
-
-  function selectField(label, options, value, onSet) {
-    const id = `f${uid++}`;
-    const wrap = document.createElement("div");
-    wrap.className = "field";
-    const lab = document.createElement("label");
-    lab.htmlFor = id;
-    lab.textContent = label;
-    const sel = document.createElement("select");
-    sel.id = id;
-    for (const [v, text] of options) {
-      const o = document.createElement("option");
-      o.value = String(v);
-      o.textContent = text;
-      sel.append(o);
-    }
-    sel.value = String(value);
-    sel.addEventListener("change", () => onSet(sel.value));
-    wrap.append(lab, sel);
-    return wrap;
-  }
-
-  function layerTitle(l) {
-    return baseTitle(l) + (l.invert === true ? " (inverted)" : "") + (hiddenByGroup(l) ? ` [${groupName(l.group)}, hidden]` : "");
-  }
-
-  function baseTitle(l) {
-    switch (l.kind) {
-      case "weighting": return WEIGHTINGS[l.curve]?.label ?? "Weighting";
-      case "mesa": return `Mesa ${l.db > 0 ? "+" : ""}${l.db} dB, ${l.fLow} to ${l.fHigh} Hz, flanks ${l.wLow} / ${l.wHigh} oct`;
-      case "shape": return `${SHAPES[l.shape]?.label ?? "Shape"} ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, ${l.width} oct wide`;
-      case "points": return `Points (${l.points.length})${l.label ? ` – ${l.label}` : ""}`;
-      case "lfTilt": return `LF tilt ${l.dbPerOct} dB/oct`;
-      case "hfTilt": return `HF tilt ${l.dbPerOct} dB/oct`;
-      case "fullTilt": return `Full tilt ${l.dbPerOct} dB/oct`;
-      case "hpf": return `HPF ${l.fc} Hz ${l.type}${l.slope}`;
-      case "lpf": return `LPF ${l.fc} Hz ${l.type}${l.slope}`;
-      case "subBoost": return `Low shelf ${l.db > 0 ? "+" : ""}${l.db} dB below ${l.fc} Hz ${l.type}${l.slope}`;
-      case "hiShelf": return `High shelf ${l.db > 0 ? "+" : ""}${l.db} dB above ${l.fc} Hz ${l.type}${l.slope}`;
-      case "bell": return `Bell ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, Q ${Number(l.q.toPrecision(4))} (${Number(qToBw(l.q).toPrecision(3))} oct)`;
-      case "hill": return `Hill ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, ${l.width} oct wide`;
-      case "rHpf": return `Resonant HPF ${l.fc} Hz, Q ${l.q}`;
-      case "rLpf": return `Resonant LPF ${l.fc} Hz, Q ${l.q}`;
-      default: return `Gain ${l.db} dB`;
-    }
-  }
-
-  function pointsEditor(l) {
-    const box = document.createElement("div");
-    const table = document.createElement("table");
-    table.className = "pts-table";
-    const thead = table.createTHead();
-    thead.className = "sr-only";
-    thead.innerHTML = "<tr><th>Hz</th><th>dB</th><th>Delete</th></tr>";
-    const tbody = table.createTBody();
-    let addBtn = null;
-    const rebuild = (focus) => {
-      tbody.replaceChildren();
-      l.points.forEach((p, i) => {
-        const tr = document.createElement("tr");
-        const mk = (idx, label) => {
-          const td = document.createElement("td");
-          const input = document.createElement("input");
-          input.type = "text";
-          input.inputMode = "decimal";
-          input.value = String(p[idx]);
-          input.setAttribute("aria-label", `Point ${i + 1} ${label}`);
-          input.addEventListener("input", () => {
-            const n = parseNum(input.value);
-            if (!Number.isFinite(n) || (idx === 0 && n <= 0)) { input.setAttribute("aria-invalid", "true"); return; }
-            input.removeAttribute("aria-invalid");
-            p[idx] = n;
-            update();
-          });
-          input.addEventListener("blur", () => {
-            if (input.getAttribute("aria-invalid")) { input.value = String(p[idx]); input.removeAttribute("aria-invalid"); }
-          });
-          td.append(input);
-          return td;
-        };
-        const del = document.createElement("td");
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "icon";
-        b.textContent = "✕";
-        b.setAttribute("aria-label", `Delete point ${i + 1}`);
-        b.addEventListener("click", () => {
-          l.points.splice(i, 1);
-          rebuild(l.points.length ? { row: Math.min(i, l.points.length - 1), col: 2 } : { add: true });
-          update();
-        });
-        del.append(b);
-        tr.append(mk(0, "Hz"), mk(1, "dB"), del);
-        tbody.append(tr);
-      });
-      if (focus?.add) addBtn?.focus();
-      else if (focus) tbody.rows[focus.row]?.cells[focus.col].querySelector("input, button")?.focus();
-    };
-    rebuild();
-    const add = document.createElement("button");
-    addBtn = add;
-    add.type = "button";
-    add.textContent = "Add point";
-    add.addEventListener("click", () => {
-      if (totalPoints(doc) >= MAX_TOTAL_POINTS) { showNotice([`No more points can be added: a curve holds at most ${MAX_TOTAL_POINTS} points in total.`]); return; }
-      const last = l.points[l.points.length - 1];
-      const prev = l.points.length > 1 ? l.points[l.points.length - 2] : null;
-      // New point: halfway (in log frequency) between the last two points, or an octave above the last.
-      const hz = last ? (prev ? Math.sqrt(prev[0] * last[0]) : Math.min(last[0] * 2, 20000)) : 1000;
-      let newHz = Math.round(hz * 100) / 100;
-      while (l.points.some((q) => q[0] === newHz)) newHz = Math.round(newHz * 0.97 * 100) / 100; // keep frequencies unique
-      l.points.push([newHz, last ? last[1] : 0]);
-      l.points.sort((x, y) => x[0] - y[0]);
-      rebuild({ row: l.points.findIndex((q) => q[0] === newHz), col: 0 });
-      update();
-    });
-    box.append(table, add);
-    return box;
-  }
-
-  function layerBody(l) {
-    const body = document.createElement("div");
-    body.className = "layer-body";
-    const set = (key) => (v) => { l[key] = v; };
-    switch (l.kind) {
-      case "points": body.append(pointsEditor(l)); break;
-      case "lfTilt":
-        body.append(numField("dB per octave", l.dbPerOct, set("dbPerOct")), numField("Pivot (Hz)", l.pivot, set("pivot")),
-          numField("Floor (Hz, optional)", l.floor, set("floor"), { optional: true, placeholder: "none" }));
-        break;
-      case "fullTilt":
-        body.append(numField("dB per octave", l.dbPerOct, set("dbPerOct")), numField("Pivot (Hz)", l.pivot, set("pivot")));
-        break;
-      case "hfTilt":
-        body.append(numField("dB per octave", l.dbPerOct, set("dbPerOct")), numField("Corner (Hz)", l.corner, set("corner")));
-        break;
-      case "gain": body.append(numField("Level (dB)", l.db, set("db"))); break;
-      case "bell": {
-        // Width can be entered as Q or as bandwidth in octaves between the half-gain points; the layer stores Q.
-        const asBw = qMode === "bw";
-        const width = asBw
-          ? numField("Bandwidth (octaves, 0.03 notch to 6.7 wide)", Number(qToBw(l.q).toPrecision(4)), (n) => { l.q = Number(bwToQ(n).toPrecision(6)); }, { check: (n) => n > 0 })
-          : numField("Q (0.1 wide to 50 notch)", l.q, set("q"));
-        body.append(numField("Gain (± dB, up to 60)", l.db, set("db")), numField("Centre frequency (Hz)", l.fc, set("fc")),
-          selectField("Enter width as", [["q", "Q"], ["bw", "Bandwidth (octaves)"]], qMode, (v) => {
-            qMode = v;
-            setPref("tcb-qmode", v);
-            renderLayers([l.id, "toggle"]);
-          }), width);
-        break;
-      }
-      case "hill":
-        body.append(numField("Height (± dB, up to 60)", l.db, set("db")), numField("Centre frequency (Hz)", l.fc, set("fc")),
-          numField("Width at half height (octaves)", l.width, set("width")));
-        break;
-      case "rHpf":
-      case "rLpf":
-        body.append(numField("Corner frequency (Hz)", l.fc, set("fc")), numField("Q (0.707 flat, higher peaks)", l.q, set("q")));
-        break;
-      case "mesa":
-        body.append(
-          numField("Gain (± dB, up to 60)", l.db, set("db")),
-          numField("Lower edge, half-gain point (Hz)", l.fLow, set("fLow")),
-          numField("Upper edge, half-gain point (Hz)", l.fHigh, set("fHigh")),
-          numField("Lower flank width (octaves)", l.wLow, set("wLow"), { check: (n) => n > 0 }),
-          numField("Upper flank width (octaves)", l.wHigh, set("wHigh"), { check: (n) => n > 0 }),
-        );
-        {
-          const note = document.createElement("p");
-          note.className = "note";
-          note.textContent = "A narrower flank is a steeper slope. Mesa-style: two raised-cosine shelf steps, each with its own slope.";
-          body.append(note);
-        }
-        break;
-      case "shape":
-        body.append(
-          selectField("Shape", Object.entries(SHAPES).map(([id, sh]) => [id, sh.label]), l.shape, (v) => { l.shape = v; update(); renderLayers([l.id, "toggle"]); }),
-          numField("Height (± dB, up to 60)", l.db, set("db")),
-          numField("Centre frequency (Hz)", l.fc, set("fc")),
-          numField("Width at the base (octaves)", l.width, set("width")),
-        );
-        if (l.shape === "trapezoid") body.append(numField("Flat top (0 = pyramid, up to 0.99)", l.flat ?? 0.5, set("flat")));
-        if (SHAPES[l.shape]?.countLabel) body.append(numField(`${SHAPES[l.shape].countLabel} (${l.shape === "stairs" ? "2 to 16" : "0.5 to 16"})`, l.count ?? 3, set("count")));
-        break;
-      case "weighting":
-        body.append(selectField("Curve", Object.entries(WEIGHTINGS).map(([id, w]) => [id, w.label]), l.curve, (v) => { l.curve = v; update(); renderLayers([l.id, "toggle"]); }));
-        break;
-      default: {
-        if (l.kind === "subBoost" || l.kind === "hiShelf") body.append(numField("Boost (± dB)", l.db, set("db")));
-        body.append(numField(l.kind === "subBoost" ? "Low-pass corner (Hz)" : l.kind === "hiShelf" ? "High-pass corner (Hz)" : "Corner frequency (Hz)", l.fc, set("fc")));
-        const slopeHost = document.createElement("div");
-        const fillSlope = () => {
-          slopeHost.replaceChildren(selectField("Slope (dB/oct)",
-            FILTERS[l.type].allowedSlopes.map((s) => [s, String(s)]), l.slope, (v) => { l.slope = Number(v); update(); }));
-        };
-        const shelf = l.kind === "subBoost" || l.kind === "hiShelf";
-        body.append(selectField("Type", Object.values(FILTERS).filter((f) => !(shelf && f.shelfSafe === false)).map((f) => [f.id, f.label]), l.type, (v) => {
-          l.type = v;
-          if (!FILTERS[v].allowedSlopes.includes(l.slope)) l.slope = FILTERS[v].allowedSlopes.at(-1);
-          fillSlope();
-          update();
-        }), slopeHost);
-        fillSlope();
-      }
-    }
-    // Any layer can be flipped upside down (its dB values change sign).
-    const flip = document.createElement("button");
-    flip.type = "button";
-    flip.className = "wide";
-    flip.setAttribute("aria-pressed", String(l.invert === true));
-    flip.textContent = l.invert === true ? "Inverted: press to restore" : "Invert (flip up/down)";
-    flip.addEventListener("click", () => {
-      if (l.invert === true) delete l.invert; else l.invert = true;
-      flip.setAttribute("aria-pressed", String(l.invert === true));
-      flip.textContent = l.invert === true ? "Inverted: press to restore" : "Invert (flip up/down)";
-      update();
-    });
-    body.append(flip);
-    return body;
-  }
-
-  /** Rebuild the layer list, then put keyboard focus back on `focus` = [layerId, action]. */
-  /** Is this layer hidden because its group is hidden? */
-  const hiddenByGroup = (l) => !visibleLayers(doc).includes(l);
-  const groupName = (n) => doc.groups?.[n - 1]?.name ?? "";
-
-  /** Which group's tab is open, 1 to 3 (a view setting, not saved). */
-  let activeTab = 1;
-  const tabOf = (l) => (Number.isInteger(l.group) && l.group >= 1 && l.group <= 3 ? l.group : 1);
-  const tabName = (n) => doc.groups?.[n - 1]?.name ?? `Group ${n}`;
-
-  function renderLayers(focus) {
-    const ul = $("layers");
-    ul.replaceChildren();
-    const mine = doc.layers.filter((l) => tabOf(l) === activeTab);
-    if (!mine.length) {
-      const li = document.createElement("li");
-      li.className = "empty";
-      li.textContent = `No layers in ${tabName(activeTab)} yet. Use Add layer below.`;
-      ul.append(li);
-    }
-    mine.forEach((l, pos) => {
-      const i = doc.layers.indexOf(l); // position in the whole list: used for the ghost colour
-      const li = document.createElement("li");
-      li.className = `layer${l.on ? "" : " off"}${hiddenByGroup(l) ? " grouphidden" : ""}`;
-      li.dataset.id = l.id;
-      stripe(li, l, i);
-      const head = document.createElement("div");
-      head.className = "layer-head";
-      const on = document.createElement("input");
-      on.type = "checkbox";
-      on.checked = l.on;
-      const label = `${layerTitle(l)}, layer ${pos + 1} of ${mine.length}`;
-      on.dataset.action = "on";
-      on.setAttribute("aria-label", label);
-      on.addEventListener("change", () => { l.on = on.checked; li.classList.toggle("off", !l.on); stripe(li, l, i); update(); });
-      const title = document.createElement("button");
-      title.type = "button";
-      title.className = "title";
-      title.dataset.action = "toggle";
-      title.setAttribute("aria-expanded", String(expanded.has(l.id)));
-      title.addEventListener("click", () => { expanded.has(l.id) ? expanded.delete(l.id) : expanded.add(l.id); renderLayers([l.id, "toggle"]); });
-      const icon = (text, action, label, fn, disabled) => {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.className = "icon";
-        b.dataset.action = action;
-        b.textContent = text;
-        b.setAttribute("aria-label", `${label}: ${layerTitle(l)}`);
-        b.disabled = !!disabled;
-        b.addEventListener("click", fn);
-        return b;
-      };
-      // moving swaps places with the neighbour in the same tab, so the order inside a tab is what you see
-      const move = (d, action) => () => {
-        const j = doc.layers.indexOf(mine[pos + d]);
-        [doc.layers[i], doc.layers[j]] = [doc.layers[j], doc.layers[i]];
-        renderLayers([l.id, action]);
-        update();
-      };
-      const remove = () => {
-        const next = mine[pos + 1] ?? mine[pos - 1];
-        doc.layers.splice(i, 1);
-        expanded.delete(l.id);
-        renderLayers(next ? [next.id, "toggle"] : ["", "add"]);
-        update();
-      };
-      head.append(on, title,
-        icon("↑", "up", "Move up", move(-1, "up"), pos === 0),
-        icon("↓", "down", "Move down", move(1, "down"), pos === mine.length - 1),
-        icon("✕", "del", "Delete", remove));
-      li.append(head);
-      if (expanded.has(l.id)) li.append(layerBody(l));
-      ul.append(li);
-    });
-    refreshTitles();
-    renderTabs();
-    if (focus) {
-      const target = focus[1] === "add" ? $("add-kind")
-        : document.querySelector(`#layers li[data-id="${focus[0]}"] [data-action="${focus[1]}"]:not(:disabled)`)
-          ?? document.querySelector(`#layers li[data-id="${focus[0]}"] .title`);
-      target?.focus();
-    }
-  }
-
-  // ---- layer tabs: three named groups with independent show/hide (SPEC 4.8)
-  function selectTab(n, { focusTab = false } = {}) {
-    activeTab = n;
-    renderGroups();
-    renderLayers();
-    if (focusTab) $(`tab-${n}`)?.focus();
-  }
-
-  /** An eye (open when the group is shown, crossed out when hidden) as an SVG, built without innerHTML. */
-  function eyeIcon(open) {
-    const ns = "http://www.w3.org/2000/svg";
-    const svg = document.createElementNS(ns, "svg");
-    svg.setAttribute("viewBox", "0 0 24 24");
-    svg.setAttribute("width", "18");
-    svg.setAttribute("height", "18");
-    svg.setAttribute("aria-hidden", "true");
-    const add = (tag, attrs) => {
-      const e = document.createElementNS(ns, tag);
-      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
-      svg.append(e);
-    };
-    const stroke = { fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" };
-    add("path", { ...stroke, d: "M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z" });
-    add("circle", { ...stroke, cx: "12", cy: "12", r: "3" });
-    if (!open) add("path", { ...stroke, d: "M3 3l18 18" });
-    return svg;
-  }
-
-  /** The tab strip. Built once, then updated in place so a focused tab keeps focus. */
-  function renderTabs() {
-    const host = $("layer-tabs");
-    if (host.children.length !== 3) {
-      host.replaceChildren();
-      for (let n = 1; n <= 3; n++) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.id = `tab-${n}`;
-        b.className = "tab";
-        b.append(Object.assign(document.createElement("span"), { className: "tab-name" }), Object.assign(document.createElement("span"), { className: "tab-count" }));
-        b.addEventListener("click", () => selectTab(n));
-        b.addEventListener("keydown", (ev) => {
-          const keys = { ArrowRight: (activeTab % 3) + 1, ArrowLeft: ((activeTab + 1) % 3) + 1, Home: 1, End: 3 };
-          if (!(ev.key in keys)) return;
-          ev.preventDefault();
-          selectTab(keys[ev.key], { focusTab: true });
-        });
-        // the eye shows or hides every layer in this group, right beside its tab (not inside it: a button can't hold a button)
-        const eye = document.createElement("button");
-        eye.type = "button";
-        eye.id = `eye-${n}`;
-        eye.className = "eye";
-        eye.addEventListener("click", () => {
-          const g = doc.groups[n - 1];
-          g.on = g.on === false;
-          renderGroupHead();
-          renderLayers();
-          update();
-        });
-        const item = document.createElement("div");
-        item.className = "tabitem";
-        item.append(b, eye);
-        host.append(item);
-      }
-    }
-    for (let n = 1; n <= 3; n++) {
-      const b = $(`tab-${n}`);
-      const count = doc.layers.filter((l) => tabOf(l) === n).length;
-      const hidden = doc.groups?.[n - 1]?.on === false;
-      b.querySelector(".tab-name").textContent = tabName(n);
-      b.querySelector(".tab-count").textContent = String(count);
-      b.classList.toggle("hiddengroup", hidden);
-      const eye = $(`eye-${n}`);
-      eye.replaceChildren(eyeIcon(!hidden));
-      eye.setAttribute("aria-pressed", String(!hidden));
-      eye.setAttribute("aria-label", `Show layers in ${tabName(n)}`);
-      eye.title = hidden ? "Show this group" : "Hide this group";
-      if (n === activeTab) b.setAttribute("aria-current", "true"); else b.removeAttribute("aria-current");
-      b.tabIndex = n === activeTab ? 0 : -1;
-      b.setAttribute("aria-label", `${tabName(n)}, ${count} layer${count === 1 ? "" : "s"}${hidden ? ", hidden" : ""}`);
-    }
-    $("tab-panel").setAttribute("aria-labelledby", `tab-${activeTab}`);
-    $("btn-add").setAttribute("aria-label", `Add layer to ${tabName(activeTab)}`);
-  }
-
-  /** The group's name box and Show layers toggle, at the top of its tab. */
-  function renderGroupHead() {
-    const host = $("group-head");
-    host.replaceChildren();
-    const n = activeTab - 1;
-    const g = doc.groups[n];
-    const name = document.createElement("input");
-    name.type = "text";
-    name.value = g.name;
-    name.maxLength = 24;
-    name.setAttribute("aria-label", `Name of group ${n + 1}`);
-    name.addEventListener("input", () => {
-      g.name = name.value.trim() ? name.value : "ABC"[n];
-      renderTabs();
-      refreshTitles();
-      update();
-    });
-    name.addEventListener("change", () => renderLayers());
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.setAttribute("aria-pressed", String(g.on !== false));
-    btn.textContent = "Show layers";
-    btn.className = "toggle";
-    btn.addEventListener("click", () => {
-      g.on = g.on === false;
-      renderGroupHead();
-      renderLayers();
-      update();
-    });
-    host.append(name, btn);
-  }
-
-  /** The tab strip and the open tab's group controls. */
-  function renderGroups() {
-    renderTabs();
-    renderGroupHead();
-  }
-
-  function refreshTitles() {
-    for (const l of doc.layers) {
-      const b = document.querySelector(`#layers li[data-id="${l.id}"] .title`);
-      if (b) b.textContent = `${expanded.has(l.id) ? "▾" : "▸"} ${layerTitle(l)}`;
-    }
-  }
-
   function renderProps() {
     const p = doc.props;
     $("p-name").value = p.name;
@@ -705,30 +231,6 @@ function startApp() {
   $("yoff-reset").addEventListener("click", () => setYoff(0));
   applyYoffUi();
 
-  // ---- layer ghosts: each enabled layer's own contribution drawn faintly behind the curve (a view setting)
-  let ghostsOn = false;
-  ghostsOn = getPref("tcb-ghosts") === "1";
-  const ghostHue = (index) => (index * 47 + 15) % 360;
-  /** Colour stripe on a layer row that matches its ghost line. */
-  function stripe(li, l, i) {
-    li.classList.toggle("ghosted", ghostsOn && !!l.on && !hiddenByGroup(l));
-    li.style.setProperty("--gh", String(ghostHue(i)));
-  }
-  const applyGhostsUi = () => {
-    $("btn-ghosts").setAttribute("aria-pressed", String(ghostsOn));
-  };
-  $("btn-ghosts").addEventListener("click", () => {
-    ghostsOn = !ghostsOn;
-    setPref("tcb-ghosts", ghostsOn ? "1" : "0");
-    applyGhostsUi();
-    document.querySelectorAll("#layers li[data-id]").forEach((li) => {
-      const l = doc.layers.find((x) => x.id === li.dataset.id);
-      if (l) stripe(li, l, doc.layers.indexOf(l));
-    });
-    update();
-  });
-  applyGhostsUi();
-
   // ---- lines only: hide the point markers and drag handles on the plot (a view setting)
   let linesOnly = false;
   linesOnly = getPref("tcb-lines") === "1";
@@ -797,8 +299,8 @@ function startApp() {
     $("eps-field").hidden = doc.grid.simplify !== true;
     $("g-simplify").checked = doc.grid.simplify === true;
     $("btn-reset-import").hidden = !doc.original;
-    syncTraceUi();
-    refreshTitles();
+    importUi.syncTraceUi();
+    layersUi.refreshTitles();
     renderNotice();
     undoUi();
     const { points, ok, issues } = buildCrv(doc, exportFormat, { withText: false }); // the text is written only on Export
@@ -820,7 +322,7 @@ function startApp() {
       // The axis always shows the full 20 Hz to 20 kHz; only the curve is cropped by the trim.
       handles, wide: doc.props.format === "smaart-spectrum", yRange: doc.props.format === "smaart-spectrum" ? null : zoom, yOffset, hidePoints: linesOnly,
       extra: wavelengthLabel, // the hover readout also shows the wavelength at 343 m/s; the points table and the export never do
-      ghosts: ghostsOn ? layerGhosts(doc).map((g) => ({ points: g.points, hue: ghostHue(g.index), title: layerTitle(doc.layers[g.index]) })) : [],
+      ghosts: layersUi.isGhostsOn() ? layerGhosts(doc).map((g) => ({ points: g.points, hue: layersUi.ghostHue(g.index), title: layersUi.layerTitle(doc.layers[g.index]) })) : [],
       points, original: doc.original, template: doc.template && doc.template.show ? traceCurve(doc.template) : null, templateName: doc.template?.name, color: doc.props.color, line: Number(doc.props.line) || 2,
       tolerance: Number(doc.props.tolerance) || 0, useTolerance: !!doc.props.useTolerance, show: !!doc.props.show,
       description: points.length
@@ -903,23 +405,7 @@ function startApp() {
   }
 
   // ---- properties
-  /**
-   * A text box bound to a number in the document. `get` gives the value the document holds now, so a box that was
-   * typed into badly goes back to what the document really has, even after a preset, undo or shared link changed it.
-   */
-  const bindNum = (id, set, get, { optional = false, check = null } = {}) => {
-    $(id).addEventListener("blur", () => {
-      if ($(id).getAttribute("aria-invalid")) { $(id).value = String(get() ?? ""); $(id).removeAttribute("aria-invalid"); }
-    });
-    $(id).addEventListener("input", () => {
-      const raw = $(id).value.trim();
-      const n = parseNum(raw);
-      if (raw === "" && optional) { $(id).removeAttribute("aria-invalid"); set(null); }
-      else if (Number.isFinite(n) && (!check || check(n))) { $(id).removeAttribute("aria-invalid"); set(n); }
-      else { $(id).setAttribute("aria-invalid", "true"); return; }
-      update();
-    });
-  };
+  const bindNum = createBindNum({ $, update });
   $("p-name").addEventListener("input", () => { doc.props.name = $("p-name").value; update(); });
   $("btn-suggest").addEventListener("click", () => {
     doc.props.name = $("btn-suggest").dataset.name;
@@ -958,22 +444,6 @@ function startApp() {
   }
   $("n-on").addEventListener("change", () => { doc.normalise.on = $("n-on").checked; update(); });
 
-  // ---- add layer
-  for (const [k, label] of Object.entries(LAYER_KINDS)) {
-    const o = document.createElement("option");
-    o.value = k;
-    o.textContent = label;
-    $("add-kind").append(o);
-  }
-  $("btn-add").addEventListener("click", () => {
-    const l = newLayer($("add-kind").value);
-    l.group = activeTab; // a layer added in a group's tab belongs to that group
-    doc.layers.push(l);
-    expanded.add(l.id);
-    renderLayers([l.id, "toggle"]);
-    update();
-  });
-
   // ---- top bar
   $("btn-new").addEventListener("click", () => {
     importMessages = [];
@@ -989,293 +459,13 @@ function startApp() {
   $("btn-undo").addEventListener("click", undo);
   $("btn-redo").addEventListener("click", redo);
   document.addEventListener("keydown", (ev) => {
-    if (!(ev.ctrlKey || ev.metaKey) || ev.altKey || dlg.open) return;
+    if (!(ev.ctrlKey || ev.metaKey) || ev.altKey || presetsUi.isOpen()) return;
     const el = document.activeElement;
     if (el && el.tagName === "INPUT" && el.type === "text") return; // let the text box undo its own typing
     const key = ev.key.toLowerCase();
     if (key === "z" && !ev.shiftKey) { ev.preventDefault(); undo(); }
     else if ((key === "z" && ev.shiftKey) || key === "y") { ev.preventDefault(); redo(); }
   });
-
-  // ---- import
-  async function importFile(file, extra = []) {
-    if (!file) return;
-    if (file.size > 2_000_000) { importMessages = ["That file is too large to be a target curve."]; noticeSig = ""; renderNotice(); return; }
-    try {
-      if (/\.json$/i.test(file.name)) {
-        importMessages = extra;
-        setDoc(presets.presetFromJson(await file.text()));
-        return;
-      }
-      const text = await file.text();
-      const { doc: imported, warnings } = docFromImport(text, file.name); // also checks the file is usable
-      if (isBlank(doc)) {
-        importMessages = [...extra, ...warnings];
-        setDoc(imported);
-      } else {
-        // a curve is already open: ask whether the file replaces it or is added as a layer
-        pendingImport = { text, name: file.name, extra, imported, warnings };
-        $("imp-name").textContent = file.name;
-        impDlg.showModal();
-      }
-    } catch (e) {
-      showNotice([`Couldn't import ${file.name}: ${e.message}`]);
-    }
-  }
-  let pendingImport = null;
-  const impDlg = $("dlg-import");
-  $("imp-replace").addEventListener("click", () => {
-    const p = pendingImport;
-    impDlg.close();
-    if (!p) return;
-    importMessages = [...p.extra, ...p.warnings];
-    setDoc(p.imported);
-  });
-  $("imp-add").addEventListener("click", () => {
-    const p = pendingImport;
-    impDlg.close();
-    if (!p) return;
-    try {
-      const r = addImportedLayer(doc, p.text, p.name);
-      doc = r.doc;
-      activeTab = 1;
-      expanded.add(r.layerId);
-      importMessages = [
-        ...p.extra,
-        `Added ${p.name} as a new Points layer (${doc.layers.at(-1).points.length} points).${r.shifted ? " It is a spectrum curve, so it was shifted to 0 dB at 1 kHz." : ""}`,
-        ...r.warnings,
-      ];
-      noticeSig = "";
-      refreshAll();
-    } catch (e) {
-      showNotice([`Couldn't add ${p.name}: ${e.message}`]);
-    }
-  });
-  $("imp-cancel").addEventListener("click", () => impDlg.close());
-  impDlg.addEventListener("close", () => { pendingImport = null; });
-  $("btn-import").addEventListener("click", () => $("file-import").click());
-  $("file-import").addEventListener("change", () => { importFile($("file-import").files[0]); $("file-import").value = ""; });
-  const hasFiles = (ev) => ev.dataTransfer && [...ev.dataTransfer.types].includes("Files");
-  document.addEventListener("dragover", (ev) => { if (hasFiles(ev) && !dlg.open && !impDlg.open) { ev.preventDefault(); document.body.classList.add("dropping"); } });
-  document.addEventListener("dragleave", (ev) => { if (!ev.relatedTarget) document.body.classList.remove("dropping"); });
-  document.addEventListener("dragend", () => document.body.classList.remove("dropping"));
-  document.addEventListener("drop", (ev) => {
-    if (!hasFiles(ev)) return;
-    ev.preventDefault();
-    document.body.classList.remove("dropping");
-    if (dlg.open || impDlg.open) return;
-    const files = ev.dataTransfer.files;
-    importFile(files[0], files.length > 1 ? ["Several files were dropped: only the first was opened."] : []);
-  });
-
-  // ---- presets dialog
-  const dlg = $("dlg-presets");
-  function renderPresets(status = "", draftName = doc.props.name) {
-    const body = $("presets-body");
-    body.replaceChildren();
-    const h = (text) => { const e = document.createElement("h3"); e.textContent = text; body.append(e); };
-    const row = (label, buttons) => {
-      const li = document.createElement("li");
-      const span = document.createElement("span");
-      span.textContent = label;
-      li.append(span);
-      for (const [text, fn, aria] of buttons) {
-        const b = document.createElement("button");
-        b.type = "button";
-        b.textContent = text;
-        b.setAttribute("aria-label", `${aria ?? text}: ${label}`);
-        b.addEventListener("click", fn);
-        li.append(b);
-      }
-      return li;
-    };
-    const load = (d) => { importMessages = []; setDoc(d); dlg.close(); };
-    const status_ = (msg, name) => { renderPresets(msg, name); $("presets-status").focus(); };
-    h("Built-in");
-    const ul1 = document.createElement("ul");
-    for (const bp of presets.BUILT_IN_PRESETS) ul1.append(row(bp.name, [["Load", () => load(bp.build())]]));
-    body.append(ul1);
-    h("Saved in this browser");
-    const ul2 = document.createElement("ul");
-    const names = presets.listPresets();
-    if (!names.length) { const li = document.createElement("li"); li.textContent = "Nothing saved yet."; ul2.append(li); }
-    for (const n of names) {
-      ul2.append(row(n, [
-        ["Load", () => { const d = presets.loadPreset(n); if (d) load(d); else status_("That preset couldn't be read."); }],
-        ["Delete", () => { if (window.confirm(`Delete the saved preset "${n}"?`)) { presets.deletePreset(n); status_(`Deleted "${n}".`); } }],
-      ]));
-    }
-    body.append(ul2);
-    h("Save current curve");
-    const wrap = document.createElement("div");
-    wrap.className = "field";
-    const lab = document.createElement("label");
-    lab.htmlFor = "preset-name";
-    lab.textContent = "Preset name";
-    const input = document.createElement("input");
-    input.type = "text";
-    input.id = "preset-name";
-    input.value = draftName;
-    const save = document.createElement("button");
-    save.type = "button";
-    save.textContent = "Save in browser";
-    save.addEventListener("click", () => {
-      const name = input.value.trim();
-      if (!name) { status_("Give the preset a name.", input.value); return; }
-      if (presets.hasPreset(name) && !window.confirm(`Replace the saved preset "${name}"?`)) return;
-      status_(presets.savePreset(name, doc) ? `Saved "${name}".` : `Couldn't save: ${presets.storageProblemText()}.`, name);
-    });
-    wrap.append(lab, input);
-    body.append(wrap, save);
-    h("Files");
-    const files = document.createElement("div");
-    files.className = "actions";
-    const toFile = document.createElement("button");
-    toFile.type = "button";
-    toFile.textContent = "Save preset as JSON";
-    toFile.addEventListener("click", () => download(`${crvFileName(doc.props.name).replace(/\.crv$/, "") || "preset"}.json`, presets.presetToJson(doc), "application/json"));
-    const fromFile = document.createElement("button");
-    fromFile.type = "button";
-    fromFile.textContent = "Load preset JSON";
-    fromFile.addEventListener("click", () => $("file-preset").click());
-    files.append(toFile, fromFile);
-    body.append(files);
-    $("presets-status").textContent = status;
-  }
-  $("btn-presets").addEventListener("click", () => { renderPresets(); dlg.showModal(); });
-  $("btn-presets-close").addEventListener("click", () => dlg.close());
-  // About: the explanation lives in a pop-out so the editor keeps the whole page
-  const aboutDlg = $("dlg-about");
-  $("btn-about").addEventListener("click", () => aboutDlg.showModal());
-  $("btn-about-close").addEventListener("click", () => aboutDlg.close());
-  aboutDlg.addEventListener("click", (ev) => { if (ev.target === aboutDlg) aboutDlg.close(); }); // a click on the backdrop
-  $("file-preset").addEventListener("change", async () => {
-    const f = $("file-preset").files[0];
-    $("file-preset").value = "";
-    if (!f) return;
-    if (f.size > 2_000_000) { $("presets-status").textContent = "That file is too large to be a preset."; $("presets-status").focus(); return; }
-    try {
-      importMessages = [];
-      setDoc(presets.presetFromJson(await f.text()));
-      dlg.close();
-    } catch (e) {
-      $("presets-status").textContent = `Couldn't load ${f.name}: ${e.message}`;
-      $("presets-status").focus();
-    }
-  });
-  window.addEventListener("pagehide", () => presets.autosave(edits.current()));
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") presets.autosave(edits.current()); });
-  // ---- reference trace (SPEC §10): a curve drawn behind the target, never exported
-  for (const n of TRACE_SMOOTHINGS) {
-    const o = document.createElement("option");
-    o.value = String(n);
-    o.textContent = n === 0 ? "Off" : `1/${n} octave`;
-    $("tr-smooth").append(o);
-  }
-  /** Copy the trace settings into the controls, unless a control is being typed in. */
-  function syncTraceUi() {
-    const t = doc.template;
-    $("trace-ctl").hidden = !t;
-    $("btn-trace").textContent = t ? "Replace trace…" : "Import trace…";
-    if (!t) return;
-    $("trace-info").textContent = `${t.name || "Trace"}: ${t.points.length} points, ${t.points[0][0]} Hz to ${t.points.at(-1)[0]} Hz.`;
-    $("tr-show").checked = t.show;
-    $("tr-norm").checked = t.normalise;
-    $("tr-smooth").value = String(t.smooth);
-    if (document.activeElement !== $("tr-offset")) $("tr-offset").value = String(t.offset);
-  }
-  $("btn-trace").addEventListener("click", () => $("file-trace").click());
-  $("file-trace").addEventListener("change", async () => {
-    const file = $("file-trace").files[0];
-    $("file-trace").value = "";
-    if (!file) return;
-    try {
-      if (file.size > MAX_TRACE_TEXT) throw new Error("That file is too large to be a trace.");
-      const r = parseTrace(await file.text());
-      doc.template = { name: file.name.replace(/\.[^.]*$/, "").slice(0, 100), points: r.points, offset: 0, smooth: 0, normalise: false, show: true };
-      importMessages = [`Trace ${file.name}: ${r.points.length} points read.`, ...r.warnings];
-    } catch (e) {
-      importMessages = [`Couldn't read ${file.name} as a trace: ${e.message}`];
-    }
-    noticeSig = "";
-    update();
-  });
-  $("tr-show").addEventListener("change", () => { if (doc.template) { doc.template.show = $("tr-show").checked; update(); } });
-  $("tr-norm").addEventListener("change", () => { if (doc.template) { doc.template.normalise = $("tr-norm").checked; update(); } });
-  $("tr-smooth").addEventListener("change", () => { if (doc.template) { doc.template.smooth = Number($("tr-smooth").value); update(); } });
-  bindNum("tr-offset", (n) => { if (doc.template) doc.template.offset = n; }, () => doc.template?.offset ?? 0, { check: (v) => Math.abs(v) <= TRACE_OFFSET_LIMIT });
-  $("tr-remove").addEventListener("click", () => { delete doc.template; update(); $("btn-trace").focus(); });
-  $("tr-layer").addEventListener("click", () => {
-    if (!doc.template) return;
-    if (totalPoints(doc) + doc.template.points.length > MAX_TOTAL_POINTS) { showNotice([`Adding the trace would take the curve past ${MAX_TOTAL_POINTS} points in total. Delete a Points layer first.`]); return; }
-    const l = newLayer("points");
-    l.points = traceCurve(doc.template);
-    l.label = doc.template.name || "Trace";
-    l.group = activeTab;
-    doc.layers.push(l);
-    expanded.add(l.id);
-    importMessages = [`Added the trace as a Points layer (${l.points.length} points), with its offset and smoothing applied.`];
-    noticeSig = "";
-    refreshAll();
-  });
-
-  // ---- shareable link (SPEC §11)
-  $("btn-share").addEventListener("click", async () => {
-    const note = $("share-note");
-    try {
-      const url = `${location.origin}${location.pathname}#d=${await encodeShare(doc)}`;
-      try {
-        await navigator.clipboard.writeText(url);
-        note.textContent = `Link copied (${url.length} characters).`;
-      } catch {
-        // no clipboard permission: put the link in the address bar so it can be copied from there
-        history.replaceState(null, "", `#d=${url.split("#d=")[1]}`);
-        note.textContent = "Couldn't use the clipboard, so the link is now in the address bar: copy it from there.";
-      }
-      if (url.length > LONG_LINK) note.textContent += " It is long, and some chat and mail apps may cut it off.";
-    } catch (e) {
-      note.textContent = `Couldn't make a link: ${e.message}`;
-    }
-  });
-  // A link opened from elsewhere (or pasted into this tab) loads its curve, then clears the address so a reload keeps
-  // your own edits. If you already have a curve open it asks first.
-  const linkDlg = $("dlg-link");
-  let pendingLink = null;
-  async function openLink() {
-    const m = /^#d=(.+)$/.exec(location.hash);
-    if (!m) return;
-    const hash = location.hash;
-    let shared;
-    try {
-      shared = await decodeShare(m[1]);
-    } catch (e) {
-      if (location.hash === hash) history.replaceState(null, "", location.pathname + location.search);
-      showNotice([`Couldn't open that link: ${e.message}`]);
-      return;
-    }
-    if (location.hash === hash) history.replaceState(null, "", location.pathname + location.search);
-    if (dragging) return; // a point is being dragged: never swap the document under it
-    if (isBlank(doc) && !doc.template) {
-      importMessages = ["Opened a shared curve from a link."];
-      noticeSig = "";
-      setDoc(shared);
-    } else {
-      pendingLink = shared;
-      if (!linkDlg.open) linkDlg.showModal();
-    }
-  }
-  $("link-open").addEventListener("click", () => {
-    const shared = pendingLink;
-    linkDlg.close();
-    if (!shared) return;
-    importMessages = ["Opened a shared curve from a link. Press Undo to get your curve back."];
-    noticeSig = "";
-    setDoc(shared);
-  });
-  $("link-keep").addEventListener("click", () => linkDlg.close());
-  linkDlg.addEventListener("close", () => { pendingLink = null; });
-  window.addEventListener("hashchange", openLink);
-  openLink();
 
   $("btn-export").addEventListener("click", () => {
     const { text } = buildCrv(doc, exportFormat);
@@ -1317,10 +507,29 @@ function startApp() {
     setTimeout(() => { btn.textContent = "Copy as text"; }, 1500);
   });
 
+  // ---- the panels that live in their own modules
+  const app = {
+    $, update, refreshAll, setDoc, showNotice, renderNotice, download, expanded,
+    get doc() { return doc; },
+    set doc(v) { doc = v; },
+    get messages() { return importMessages; },
+    set messages(v) { importMessages = v; },
+    get noticeSig() { return noticeSig; },
+    set noticeSig(v) { noticeSig = v; },
+    get dragging() { return dragging; },
+    presetsOpen: () => presetsUi.isOpen(),
+  };
+  const layersUi = createLayersUi(app);
+  const presetsUi = createPresetsUi(app);
+  const importUi = createImportUi(app, layersUi);
+
+  window.addEventListener("pagehide", () => presets.autosave(edits.current()));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") presets.autosave(edits.current()); });
+
   try {
     renderProps();
-    renderGroups();
-    renderLayers();
+    layersUi.renderGroups();
+    layersUi.renderLayers();
     update();
   } catch (e) {
     // an autosaved curve that can't be drawn would fail again on every reload: forget it and start a new curve
@@ -1330,8 +539,8 @@ function startApp() {
     importMessages = [`The autosaved curve couldn't be opened (${e.message}), so a new curve was started. Add ?fresh to the address to skip the autosave if this happens again.`];
     noticeSig = "";
     renderProps();
-    renderGroups();
-    renderLayers();
+    layersUi.renderGroups();
+    layersUi.renderLayers();
     update();
   }
 }

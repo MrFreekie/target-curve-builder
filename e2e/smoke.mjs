@@ -211,6 +211,82 @@ try {
     assert.deepEqual(r.cols, ["Hz", "dB"]);
   });
 
+  await test("every layer type can be added and opened, the tabs and eyes work, and ghosts and presets still respond", async () => {
+    await open("/?fresh");
+    const r = await run(`const kinds = [...document.querySelectorAll("#add-kind option")].map(o => o.value);
+      for (const k of kinds) {
+        document.getElementById("add-kind").value = k; document.getElementById("btn-add").click(); await new Promise(r => setTimeout(r, 60));
+        const li = [...document.querySelectorAll("#layers li")].at(-1);
+        if (!li.querySelector(".layer-head")) throw new Error("no row for " + k);
+        if (!li.querySelector("input, select, button.wide, .field")) throw new Error("no editor for " + k);
+      }
+      const rows = document.querySelectorAll("#layers li.layer").length;
+      document.getElementById("tab-2").click(); await new Promise(r => setTimeout(r, 100));
+      const emptyTab = document.querySelector("#layers .empty") !== null;
+      document.getElementById("eye-2").click(); const hidden = document.getElementById("tab-2").classList.contains("hiddengroup");
+      document.getElementById("eye-2").click();
+      document.getElementById("tab-1").click();
+      document.getElementById("btn-ghosts").click(); await new Promise(r => setTimeout(r, 100));
+      const ghosted = document.querySelectorAll("#layers li.ghosted").length;
+      document.getElementById("btn-presets").click(); await new Promise(r => setTimeout(r, 150));
+      const presetsOpen = document.getElementById("dlg-presets").open;
+      document.getElementById("btn-presets-close").click();
+      return { kinds: kinds.length, rows, emptyTab, hidden, ghosted: ghosted > 0, presetsOpen };`);
+    assert.ok(r.kinds >= 15, "all layer types are offered");
+    assert.equal(r.rows, 6 + r.kinds);
+    assert.deepEqual([r.emptyTab, r.hidden, r.ghosted, r.presetsOpen], [true, true, true, true]);
+  });
+
+  await test("a reference trace imports, its boxes work, and it can become a layer; importing onto a curve asks replace or add", async () => {
+    await open("/?fresh");
+    const r = await run(`const rows = []; for (let i = 0; i <= 40; i++) rows.push((20 * 2 ** (i / 4)).toFixed(2) + " " + (70 + 3 * Math.sin(i)).toFixed(2));
+      const dt = new DataTransfer(); dt.items.add(new File(["* test" + String.fromCharCode(10) + "Freq SPL" + String.fromCharCode(10) + rows.join(String.fromCharCode(10))], "Room test.txt"));
+      const inp = document.getElementById("file-trace"); inp.files = dt.files; inp.dispatchEvent(new Event("change")); await new Promise(r => setTimeout(r, 600));
+      const shown = !document.getElementById("trace-ctl").hidden && document.querySelectorAll(".plot .template").length === 1;
+      const off = document.getElementById("tr-offset"); off.value = "abc"; off.dispatchEvent(new Event("input", { bubbles: true })); off.dispatchEvent(new Event("blur"));
+      const offsetBack = off.value;
+      document.getElementById("tr-norm").click(); document.getElementById("tr-show").click(); await new Promise(r => setTimeout(r, 200));
+      const hidden = document.querySelectorAll(".plot .template").length === 0;
+      const before = document.querySelectorAll("#layers li.layer").length;
+      document.getElementById("tr-layer").click(); await new Promise(r => setTimeout(r, 200));
+      const after = document.querySelectorAll("#layers li.layer").length;
+      // a file dropped on a curve that has been edited asks what to do
+      document.getElementById("p-name").value = "Edited"; document.getElementById("p-name").dispatchEvent(new Event("input", { bubbles: true }));
+      const dt2 = new DataTransfer(); dt2.items.add(new File([${JSON.stringify(CRV)}], "Other.crv"));
+      const imp = document.getElementById("file-import"); imp.files = dt2.files; imp.dispatchEvent(new Event("change")); await new Promise(r => setTimeout(r, 500));
+      const asked = document.getElementById("dlg-import").open;
+      document.getElementById("imp-add").click(); await new Promise(r => setTimeout(r, 300));
+      return { shown, offsetBack, hidden, layerAdded: after === before + 1, asked, added: document.querySelectorAll("#layers li.layer").length === after + 1, name: document.getElementById("p-name").value };`);
+    assert.deepEqual(r, { shown: true, offsetBack: "0", hidden: true, layerAdded: true, asked: true, added: true, name: "Edited" });
+  });
+
+  await test("presets: a built-in loads, a curve can be saved in the browser, listed and loaded back", async () => {
+    await open("/?fresh");
+    const r = await run(`const wait = (ms) => new Promise(r => setTimeout(r, ms));
+      const btn = (text) => [...document.querySelectorAll("#presets-body button")].find(b => b.textContent.trim() === text);
+      document.getElementById("btn-presets").click(); await wait(200);
+      const builtIn = [...document.querySelectorAll("#presets-body button")].find(b => /^Load/.test(b.textContent.trim()) || b.textContent.trim() === "Load");
+      const sawBuiltIns = document.querySelectorAll("#presets-body li").length > 3;
+      builtIn.click(); await wait(300);
+      const closed = !document.getElementById("dlg-presets").open;
+      const loaded = document.getElementById("p-name").value;
+      document.getElementById("p-name").value = "My saved curve"; document.getElementById("p-name").dispatchEvent(new Event("input", { bubbles: true }));
+      document.getElementById("btn-presets").click(); await wait(200);
+      document.getElementById("preset-name").value = "e2e preset"; btn("Save in browser").click(); await wait(200);
+      const status = document.getElementById("presets-status").textContent;
+      document.getElementById("btn-presets-close").click();
+      document.getElementById("btn-new").click(); await wait(300);
+      const afterNew = document.getElementById("p-name").value;
+      document.getElementById("btn-presets").click(); await wait(200);
+      const row = [...document.querySelectorAll("#presets-body li")].find(li => li.textContent.includes("e2e preset"));
+      [...row.querySelectorAll("button")].find(b => /Load/.test(b.textContent)).click(); await wait(300);
+      return { sawBuiltIns, closed, loaded, status, afterNew, back: document.getElementById("p-name").value };`);
+    assert.ok(r.sawBuiltIns && r.closed);
+    assert.match(r.status, /Saved/);
+    assert.equal(r.afterNew, "Target curve");
+    assert.equal(r.back, "My saved curve");
+  });
+
   await test("About opens as a pop-out and closes again", async () => {
     await open("/?fresh");
     const r = await run(`const d = document.getElementById("dlg-about"); const before = d.open;
