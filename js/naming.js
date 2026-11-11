@@ -13,7 +13,15 @@ function filterName(l, label) {
 
 /** Name parts for one enabled layer; an empty list means the layer changes nothing. */
 function parts(l) {
+  const p = rawParts(l);
+  return l.invert === true ? p.map((x) => `Inv${x}`) : p;
+}
+
+function rawParts(l) {
   switch (l.kind) {
+    case "weighting":
+      const short = { A: "AWt", C: "CWt", RIAA: "RIAA", FM75: "FM75", FM50: "FM50" };
+      return [Object.hasOwn(short, l.curve) ? short[l.curve] : "Wt"];
     case "lfTilt":
       return [`Tilt_${n(l.dbPerOct)}dBoct_${n(l.pivot)}Hz`, ...(l.floor != null ? [`floor${n(l.floor)}Hz`] : [])];
     case "fullTilt":
@@ -56,7 +64,7 @@ function parts(l) {
  */
 export function suggestName(doc) {
   const on = doc.layers.filter((l) => l.on !== false && l.on !== 0);
-  const order = { points: 0, fullTilt: 1, lfTilt: 1, hfTilt: 2, gain: 3, bell: 3.2, hill: 3.3, subBoost: 3.5, hiShelf: 3.6, hpf: 4, rHpf: 4.5, lpf: 5, rLpf: 5.5 };
+  const order = { points: 0, fullTilt: 1, lfTilt: 1, hfTilt: 2, gain: 3, weighting: 3.1, bell: 3.2, hill: 3.3, subBoost: 3.5, hiShelf: 3.6, hpf: 4, rHpf: 4.5, lpf: 5, rLpf: 5.5 };
   const sorted = [...on].sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9));
   const name = sorted.flatMap(parts).join("_");
   return name || "Flat";

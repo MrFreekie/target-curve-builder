@@ -1,6 +1,6 @@
 // Pure layer maths and the filter registry. No DOM access. See docs/SPEC.md §4.
 import { pos } from "./curve.js";
-import { bellDb, resonantDb, hillDb, besselDb, chebyshevDb } from "./eq.js";
+import { bellDb, resonantDb, hillDb, besselDb, chebyshevDb, weightingDb } from "./eq.js";
 
 /** Allowed ranges for layer parameters (SPEC §4.4b to §4.4e). */
 export const LAYER_LIMITS = { q: [0.1, 50], resonantQ: [0.1, 20], width: [0.1, 10], db: [-60, 60] };
@@ -105,6 +105,11 @@ export function interpPoints(f, points) {
  * @returns {number} dB
  */
 export function layerDb(f, layer) {
+  const v = layerValue(f, layer);
+  return layer.invert === true ? -v : v;
+}
+
+function layerValue(f, layer) {
   switch (layer.kind) {
     case "points":
       return interpPoints(f, layer.points);
@@ -134,6 +139,8 @@ export function layerDb(f, layer) {
       return resonantDb(f, layer.fc, layer.q, "hp");
     case "hill":
       return hillDb(f, layer.fc, layer.width, layer.db);
+    case "weighting":
+      return weightingDb(layer.curve, f);
     case "subBoost":
       // "Haystack": gain below a low-pass corner. db is scaled by the filter's linear magnitude (1 far below
       // the corner, 0 far above), so the full boost is reached well below fc and the corner gives a half

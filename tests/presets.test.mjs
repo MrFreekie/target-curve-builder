@@ -34,9 +34,10 @@ const rowsOf = (text) => text.split(/\r\n|\n/).slice(7).filter(Boolean).map((l) 
 const preset = (name) => P.BUILT_IN_PRESETS.find((p) => p.name === name);
 
 // built-ins
-test("the three built-in presets from the plan are shipped", () => {
-  assert.deepEqual(P.BUILT_IN_PRESETS.map((p) => p.name).sort(), [
-    "3 dB/oct from 1 kHz + 32 Hz LR48", "Flat + 32 Hz LR48", "LA 7 dB at 63 → 0 at 315 + 32 Hz LR48"].sort());
+test("the three built-in presets from the plan are shipped (more were added later)", () => {
+  const names = P.BUILT_IN_PRESETS.map((p) => p.name);
+  for (const n of ["3 dB/oct from 1 kHz + 32 Hz LR48", "Flat + 32 Hz LR48", "LA 7 dB at 63 → 0 at 315 + 32 Hz LR48"]) assert.ok(names.includes(n), n);
+  assert.equal(new Set(names).size, names.length, "unique names");
 });
 
 for (const p of P.BUILT_IN_PRESETS) {

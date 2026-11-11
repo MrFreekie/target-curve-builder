@@ -2,6 +2,7 @@
 // Pure module: no DOM access. Rules are in docs/SPEC.md §5 and §6.
 import { round6 } from "../curve.js";
 import { FILTERS, LAYER_LIMITS } from "../layers.js";
+import { WEIGHTINGS } from "../eq.js";
 
 /** Known header keys (lower case) in canonical order. */
 const KNOWN = ["line", "color", "show", "type", "tolerance", "usetolerance", "offset"];
@@ -251,6 +252,9 @@ export function validateTf(doc, points) {
         err(`${label}: ${filter.label} allows ${filter.allowedSlopes.join(", ")} dB/oct (got ${layer.slope}).`);
       }
       if (!(Number(layer.fc) > 0)) err(`${label}: corner frequency must be greater than 0 Hz.`);
+    }
+    if (layer.kind === "weighting" && layer.on !== false && !(typeof layer.curve === "string" && Object.hasOwn(WEIGHTINGS, layer.curve))) {
+      err(`Weighting: unknown curve "${layer.curve}".`);
     }
     const extra = { bell: ["Bell", "q", LAYER_LIMITS.q], hill: ["Hill", "width", LAYER_LIMITS.width], rHpf: ["Resonant HPF", "q", LAYER_LIMITS.resonantQ], rLpf: ["Resonant LPF", "q", LAYER_LIMITS.resonantQ] }[layer.kind];
     if (extra && layer.on !== false) {

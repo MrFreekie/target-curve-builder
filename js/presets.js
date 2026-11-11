@@ -1,6 +1,6 @@
 // Autosave, named presets (localStorage) and JSON preset files.
 // Every storage call is wrapped in try/catch: the app must work with storage blocked.
-import { newDoc, loadDoc } from "./doc.js";
+import { newDoc, newLayer, loadDoc } from "./doc.js";
 
 const AUTOSAVE_KEY = "tcb-autosave";
 const PRESETS_KEY = "tcb-presets";
@@ -110,6 +110,49 @@ const withHpf = (doc) => {
   Object.assign(hp, { on: true, fc: 32, type: "LR", slope: 48 });
 };
 
+/**
+ * SMPTE ST 202:2010 Table 1: B-chain electroacoustic response ("X-curve") for a medium theatre (200 to 500
+ * seats), level in dB at the 1/3-octave centre frequencies. Flat from 50 Hz to 2 kHz, so only the corners are listed.
+ * Tolerances in the standard are +3 dB and -3 to -7 dB (wider at the extremes); the preset uses +/-3 dB.
+ */
+export const SMPTE_ST202_TABLE_1 = [
+  [31.5, -2], [40, -1], [50, 0], [2000, 0], [2500, -1], [3150, -2], [4000, -3], [5000, -4],
+  [6300, -5], [8000, -6], [10000, -7], [12500, -9], [16000, -11],
+];
+
+/**
+ * Table A.1 "approximate correction factors for auditorium size" at 4 kHz and 8 kHz (0 dB at 2 kHz), added to
+ * Table 1. The standard gives nothing above 8 kHz; the 8 kHz value is held there.
+ */
+const SIZE_CORRECTION = { 150: [0.5, 1.0], 1000: [-0.5, -1.0] };
+
+function cinemaPresets() {
+  const make = (name, title, seats) => ({
+    name,
+    build() {
+      const d = newDoc();
+      d.props.name = title;
+      d.props.line = 3;
+      d.props.tolerance = 3;
+      d.props.useTolerance = 1;
+      d.grid = { mode: "resample", fraction: 3, fmin: 31.5, fmax: 16000 }; // the range Table 1 defines
+      d.layers.find((l) => l.kind === "points").points = SMPTE_ST202_TABLE_1.map((p) => [...p]);
+      if (seats) {
+        const [c4, c8] = SIZE_CORRECTION[seats];
+        const fix = newLayer("points");
+        fix.points = [[2000, 0], [4000, c4], [8000, c8]];
+        d.layers.push(fix);
+      }
+      return d;
+    },
+  });
+  return [
+    make("Cinema X-curve, SMPTE ST 202:2010 (medium theatre, 200-500 seats)", "X-curve SMPTE ST202 medium", null),
+    make("Cinema X-curve, SMPTE ST 202:2010 (small theatre, 150 seats)", "X-curve SMPTE ST202 small 150 seats", 150),
+    make("Cinema X-curve, SMPTE ST 202:2010 (large theatre, 1000 seats)", "X-curve SMPTE ST202 large 1000 seats", 1000),
+  ];
+}
+
 /** Presets that ship with the app. Each `build()` returns a fresh document. */
 export const BUILT_IN_PRESETS = [
   {
@@ -144,4 +187,24 @@ export const BUILT_IN_PRESETS = [
       return thirdOctave(d);
     },
   },
+  ...[
+    ["A-weighting (dBA)", "A-weighting", { curve: "A" }],
+    ["C-weighting (dBC)", "C-weighting", { curve: "C" }],
+    ["Inverse A-weighting (large bass boost)", "A-weighting inverted", { curve: "A", invert: true }],
+    ["RIAA playback", "RIAA playback", { curve: "RIAA" }],
+    ["RIAA recording (inverse of playback)", "RIAA recording", { curve: "RIAA", invert: true }],
+    ["FM pre-emphasis 75 µs", "FM pre-emphasis 75us", { curve: "FM75" }],
+  ].map(([name, title, opts]) => ({
+    name,
+    build() {
+      const d = newDoc();
+      d.props.name = title;
+      d.props.line = 3;
+      const l = newLayer("weighting");
+      Object.assign(l, opts);
+      d.layers.push(l);
+      return d;
+    },
+  })),
+  ...cinemaPresets(),
 ];

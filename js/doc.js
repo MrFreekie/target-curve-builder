@@ -1,6 +1,7 @@
 // Document model: defaults, layer factories, validation of loaded documents, and import.
 // Pure module: no DOM access, importable from Node.
 import { FILTERS, LAYER_LIMITS, interpPoints } from "./layers.js";
+import { WEIGHTINGS } from "./eq.js";
 import { detectFormat } from "./formats/index.js";
 import { sanitiseFileName } from "./formats/smaart.js";
 
@@ -15,6 +16,7 @@ export const LAYER_KINDS = {
   hill: "Hill (haystack bump)",
   rHpf: "Resonant HPF (2nd order)",
   rLpf: "Resonant LPF (2nd order)",
+  weighting: "Weighting (A, C, RIAA, FM)",
   hpf: "HPF",
   lpf: "LPF",
   gain: "Gain",
@@ -65,6 +67,7 @@ export function newLayer(kind) {
     case "hill": return { ...base, fc: 60, width: 2, db: 6 };
     case "rHpf": return { ...base, fc: 40, q: 1 };
     case "rLpf": return { ...base, fc: 16000, q: 1 };
+    case "weighting": return { ...base, curve: "A" };
     case "hpf": return { ...base, fc: 32, type: "LR", slope: 48 };
     case "lpf": return { ...base, fc: 16000, type: "LR", slope: 24 };
     default: return { ...base, kind: "gain", db: 0 };
@@ -99,6 +102,7 @@ function ranged(v, [lo, hi], what) {
 function loadLayer(l) {
   if (!isObj(l) || typeof l.kind !== "string" || !Object.hasOwn(LAYER_KINDS, l.kind)) throw new Error("Unknown layer type.");
   const out = { id: newId(), kind: l.kind, on: l.on !== false && l.on !== 0 };
+  if (l.invert === true) out.invert = true; // any layer can be flipped upside down
   switch (l.kind) {
     case "points": out.points = loadPoints(l.points); break;
     case "lfTilt":
@@ -124,6 +128,10 @@ function loadLayer(l) {
       out.fc = num(l.fc, "centre frequency", { positive: true });
       out.width = ranged(num(l.width, "width"), LAYER_LIMITS.width, "width");
       out.db = ranged(num(l.db, "gain"), LAYER_LIMITS.db, "gain");
+      break;
+    case "weighting":
+      if (typeof l.curve !== "string" || !Object.hasOwn(WEIGHTINGS, l.curve)) throw new Error(`Unknown weighting curve ${l.curve}.`);
+      out.curve = l.curve;
       break;
     case "rHpf":
     case "rLpf":

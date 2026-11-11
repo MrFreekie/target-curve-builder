@@ -5,9 +5,11 @@ import { getAdapter, writableAdapters } from "./formats/index.js";
 import { fmt6, pickerToSmaart, smaartToPicker, crvFileName, exportFileName } from "./formats/smaart.js";
 import { createPlot } from "./plot.js";
 import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf, resetToImport } from "./doc.js";
+import { WEIGHTINGS } from "./eq.js";
 import * as presets from "./presets.js";
 import { suggestName } from "./naming.js";
 import { randomContrastingColour } from "./colour.js";
+import { qToBw, bwToQ } from "./bandwidth.js";
 
 export { newDoc, newLayer };
 
@@ -174,7 +176,8 @@ function startApp() {
   function dragMove(i, dDb, hz) {
     const l = pointsLayer();
     if (!dragging || !l || !l.points[i]) return;
-    l.points[i][1] = Math.round((dragBase.db + dDb) * 100) / 100;
+    // On an inverted layer the plotted curve moves the opposite way to the stored value.
+    l.points[i][1] = Math.round((dragBase.db + (l.invert === true ? -dDb : dDb)) * 100) / 100;
     if (hz !== null) l.points[i][0] = hz;
     if (expanded.has(l.id)) renderLayers();
     update();
@@ -189,14 +192,17 @@ function startApp() {
   function nudge(i, d) {
     const l = pointsLayer();
     if (!l || !l.points[i]) return;
-    l.points[i][1] = Math.round((l.points[i][1] + d) * 100) / 100;
+    l.points[i][1] = Math.round((l.points[i][1] + (l.invert === true ? -d : d)) * 100) / 100;
     if (expanded.has(l.id)) renderLayers();
     update();
   }
   let uid = 0;
+  // How the bell's width is typed: "q" or "bw" (octaves). A view setting kept in this browser only.
+  let qMode = "q";
+  try { if (localStorage.getItem("tcb-qmode") === "bw") qMode = "bw"; } catch { /* storage unavailable */ }
 
   /** Text input bound to a number. `optional` lets an empty box mean null. */
-  function numField(label, value, onSet, { optional = false, placeholder = "" } = {}) {
+  function numField(label, value, onSet, { optional = false, placeholder = "", check = null } = {}) {
     const id = `f${uid++}`;
     const wrap = document.createElement("div");
     wrap.className = "field";
@@ -215,7 +221,7 @@ function startApp() {
       const raw = input.value.trim();
       const n = parseNum(raw);
       if (raw === "" && optional) { input.removeAttribute("aria-invalid"); onSet(null); }
-      else if (Number.isFinite(n)) { input.removeAttribute("aria-invalid"); onSet(n); }
+      else if (Number.isFinite(n) && (!check || check(n))) { input.removeAttribute("aria-invalid"); onSet(n); }
       else { input.setAttribute("aria-invalid", "true"); return; }
       lastGood = input.value;
       update();
@@ -249,7 +255,12 @@ function startApp() {
   }
 
   function layerTitle(l) {
+    return baseTitle(l) + (l.invert === true ? " (inverted)" : "");
+  }
+
+  function baseTitle(l) {
     switch (l.kind) {
+      case "weighting": return WEIGHTINGS[l.curve]?.label ?? "Weighting";
       case "points": return `Points (${l.points.length})`;
       case "lfTilt": return `LF tilt ${l.dbPerOct} dB/oct`;
       case "hfTilt": return `HF tilt ${l.dbPerOct} dB/oct`;
@@ -258,7 +269,7 @@ function startApp() {
       case "lpf": return `LPF ${l.fc} Hz ${l.type}${l.slope}`;
       case "subBoost": return `Low shelf ${l.db > 0 ? "+" : ""}${l.db} dB below ${l.fc} Hz ${l.type}${l.slope}`;
       case "hiShelf": return `High shelf ${l.db > 0 ? "+" : ""}${l.db} dB above ${l.fc} Hz ${l.type}${l.slope}`;
-      case "bell": return `Bell ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, Q ${l.q}`;
+      case "bell": return `Bell ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, Q ${Number(l.q.toPrecision(4))} (${Number(qToBw(l.q).toPrecision(3))} oct)`;
       case "hill": return `Hill ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, ${l.width} oct wide`;
       case "rHpf": return `Resonant HPF ${l.fc} Hz, Q ${l.q}`;
       case "rLpf": return `Resonant LPF ${l.fc} Hz, Q ${l.q}`;
@@ -355,10 +366,20 @@ function startApp() {
         body.append(numField("dB per octave", l.dbPerOct, set("dbPerOct")), numField("Corner (Hz)", l.corner, set("corner")));
         break;
       case "gain": body.append(numField("Level (dB)", l.db, set("db"))); break;
-      case "bell":
+      case "bell": {
+        // Width can be entered as Q or as bandwidth in octaves between the half-gain points; the layer stores Q.
+        const asBw = qMode === "bw";
+        const width = asBw
+          ? numField("Bandwidth (octaves, 0.03 notch to 6.7 wide)", Number(qToBw(l.q).toPrecision(4)), (n) => { l.q = Number(bwToQ(n).toPrecision(6)); }, { check: (n) => n > 0 })
+          : numField("Q (0.1 wide to 50 notch)", l.q, set("q"));
         body.append(numField("Gain (± dB, up to 60)", l.db, set("db")), numField("Centre frequency (Hz)", l.fc, set("fc")),
-          numField("Q (0.1 wide to 50 notch)", l.q, set("q")));
+          selectField("Enter width as", [["q", "Q"], ["bw", "Bandwidth (octaves)"]], qMode, (v) => {
+            qMode = v;
+            try { localStorage.setItem("tcb-qmode", v); } catch { /* storage unavailable */ }
+            renderLayers([l.id, "toggle"]);
+          }), width);
         break;
+      }
       case "hill":
         body.append(numField("Height (± dB, up to 60)", l.db, set("db")), numField("Centre frequency (Hz)", l.fc, set("fc")),
           numField("Width at half height (octaves)", l.width, set("width")));
@@ -366,6 +387,9 @@ function startApp() {
       case "rHpf":
       case "rLpf":
         body.append(numField("Corner frequency (Hz)", l.fc, set("fc")), numField("Q (0.707 flat, higher peaks)", l.q, set("q")));
+        break;
+      case "weighting":
+        body.append(selectField("Curve", Object.entries(WEIGHTINGS).map(([id, w]) => [id, w.label]), l.curve, (v) => { l.curve = v; update(); renderLayers([l.id, "toggle"]); }));
         break;
       default: {
         if (l.kind === "subBoost" || l.kind === "hiShelf") body.append(numField("Boost (± dB)", l.db, set("db")));
@@ -385,6 +409,19 @@ function startApp() {
         fillSlope();
       }
     }
+    // Any layer can be flipped upside down (its dB values change sign).
+    const flip = document.createElement("button");
+    flip.type = "button";
+    flip.className = "wide";
+    flip.setAttribute("aria-pressed", String(l.invert === true));
+    flip.textContent = l.invert === true ? "Inverted: press to restore" : "Invert (flip up/down)";
+    flip.addEventListener("click", () => {
+      if (l.invert === true) delete l.invert; else l.invert = true;
+      flip.setAttribute("aria-pressed", String(l.invert === true));
+      flip.textContent = l.invert === true ? "Inverted: press to restore" : "Invert (flip up/down)";
+      update();
+    });
+    body.append(flip);
     return body;
   }
 

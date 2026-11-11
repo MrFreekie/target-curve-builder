@@ -134,3 +134,56 @@ export function besselDb(n, r) {
   const { a, lnA0, w3 } = bessel(n);
   return -(10 / LN10) * (lnBesselSq(a, n, w3 * r) - lnA0);
 }
+
+// ---------------------------------------------------------------- Weighting and classic EQ curves
+/** 10 log10(f^2 + a^2), stable for any f and a. */
+function lg(f, a) {
+  const hi = Math.max(f, a);
+  const lo = Math.min(f, a);
+  return 20 * Math.log10(hi) + 10 * Math.log10(1 + (lo / hi) ** 2);
+}
+
+/** 10 log10(1 + x^2) where x = 10^logx, computed from the log so any frequency is safe. */
+function lgOne(logx) {
+  return logx > 0 ? 20 * logx + 10 * Math.log10(1 + 10 ** (-2 * logx)) : 10 * Math.log10(1 + 10 ** (2 * logx));
+}
+
+/** log10 of w * tau for w = 2 pi f. */
+const logWt = (f, tau) => Math.log10(2 * Math.PI * tau) + Math.log10(f);
+
+// IEC 61672-1 pole frequencies (Hz).
+const F1 = 20.598997;
+const F2 = 107.65265;
+const F3 = 737.86223;
+const F4 = 12194.217;
+
+const aRaw = (f) => 40 * Math.log10(F4) + 80 * Math.log10(f) - 2 * lg(f, F1) - lg(f, F2) - lg(f, F3) - 2 * lg(f, F4);
+const cRaw = (f) => 40 * Math.log10(F4) + 40 * Math.log10(f) - 2 * lg(f, F1) - 2 * lg(f, F4);
+// RIAA replay: (1 + s 318us) / ((1 + s 3180us)(1 + s 75us)).
+const riaaRaw = (f) => lgOne(logWt(f, 318e-6)) - lgOne(logWt(f, 3180e-6)) - lgOne(logWt(f, 75e-6));
+// FM pre-emphasis: 1 + s tau (tau 75 us in the Americas and Japan, 50 us in Europe), 0 dB at low frequencies.
+const fmDb = (tau) => (f) => lgOne(logWt(f, tau));
+
+/**
+ * Weighting and classic EQ curves, magnitude only, in dB.
+ * A, C and RIAA are shifted so the response is exactly 0 dB at 1 kHz; the FM curves are 0 dB at low frequencies.
+ * @type {Record<string, {label: string, db: (f: number) => number}>}
+ */
+export const WEIGHTINGS = {
+  A: { label: "A-weighting (dBA)", db: (f) => aRaw(f) - aRaw(1000) },
+  C: { label: "C-weighting (dBC)", db: (f) => cRaw(f) - cRaw(1000) },
+  RIAA: { label: "RIAA playback (replay)", db: (f) => riaaRaw(f) - riaaRaw(1000) },
+  FM75: { label: "FM pre-emphasis 75 µs", db: fmDb(75e-6) },
+  FM50: { label: "FM pre-emphasis 50 µs", db: fmDb(50e-6) },
+};
+
+/**
+ * Value of a weighting or classic curve at one frequency.
+ * @param {string} curve Key of WEIGHTINGS.
+ * @param {number} f Frequency in Hz.
+ * @returns {number} dB
+ */
+export function weightingDb(curve, f) {
+  if (typeof curve !== "string" || !Object.hasOwn(WEIGHTINGS, curve)) throw new RangeError(`Unknown weighting curve ${curve}`);
+  return WEIGHTINGS[curve].db(f);
+}

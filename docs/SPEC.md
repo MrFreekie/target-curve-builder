@@ -123,10 +123,18 @@ Added after v1.0.0. Parameters `db`, `fc`, `type`, `slope` as for §4.4a. `value
 
 ### 4.4e Bell, resonant 2nd-order filters and hill
 Added after v1.0.0. All are magnitude only, with the real frequency in Hz, `x = f/fc`.
-- **Bell** (`kind: "bell"`: `fc`, `q` 0.1 to 50, `db` -60 to +60): `A = 10^(db/40)`, `|H|^2 = ((1-x^2)^2 + (x A/Q)^2) / ((1-x^2)^2 + (x/(A Q))^2)`, dB = `10 log10 |H|^2`. Exactly `db` at `fc`, 0 far away, symmetric in log frequency, a cut is the mirror of a boost. Low Q is wide; a deep cut with high Q is a notch, and with low Q a band-stop.
+- **Bell** (`kind: "bell"`: `fc`, `q` 0.1 to 50, `db` -60 to +60): `A = 10^(db/40)`, `|H|^2 = ((1-x^2)^2 + (x A/Q)^2) / ((1-x^2)^2 + (x/(A Q))^2)`, dB = `10 log10 |H|^2`. Exactly `db` at `fc`, 0 far away, symmetric in log frequency, a cut is the mirror of a boost. Low Q is wide; a deep cut with high Q is a notch, and with low Q a band-stop. **Bandwidth entry:** the layer always stores `q`; the UI can also take the bandwidth in octaves between the half-gain points (half the dB): `BW = 2 asinh(1/(2Q)) / ln 2`, `Q = 1/(2 sinh(BW ln2 / 2)) = 2^(BW/2) / (2^BW - 1)`. This is exact for the formula above, because its half-gain points sit at `x - 1/x = +/-1/Q`. Q 1 is 1.388 octaves, Q 1.414 about 1 octave, Q 0.1 to 50 is 6.67 to 0.029 octaves.
 - **Resonant low-pass / high-pass** (`kind: "rLpf"` / `"rHpf"`: `fc`, `q` 0.1 to 20): low-pass `|H|^2 = 1/((1-x^2)^2 + (x/Q)^2)`, high-pass the same times `x^4`. `q = 1/sqrt(2)` (0.70711) equals Butterworth 12 (typing 0.7071 differs by under 0.0001 dB); above that the response peaks near `fc`, `20 log10 Q` at `fc`.
 - **Hill** (`kind: "hill"`: `fc`, `width` 0.1 to 10 octaves, `db` -60 to +60): `value = db * 2^(-4 (log2(f/fc) / width)^2)`. Full `db` at `fc`, half at `width/2` octaves either side, so `width` is the full width at half height. Uses the true log of the frequency ratio, not `pos()`.
 - `fc` of each of these is a layer corner for §3.4.
+
+### 4.4f Weighting and classic EQ curves (`kind: "weighting"`) and invert
+Added after v1.0.0. `curve` is one of `A`, `C`, `RIAA`, `FM75`, `FM50`. All are magnitude only, with `f` in Hz.
+- **A-weighting** (IEC 61672-1), with poles `f1 = 20.598997`, `f2 = 107.65265`, `f3 = 737.86223`, `f4 = 12194.217` Hz: `RA = f4^2 f^4 / ((f^2 + f1^2) sqrt((f^2 + f2^2)(f^2 + f3^2)) (f^2 + f4^2))`, dB = `20 log10 RA` minus its value at 1 kHz, so the result is exactly 0 dB at 1 kHz.
+- **C-weighting:** `RC = f4^2 f^2 / ((f^2 + f1^2)(f^2 + f4^2))`, dB = `20 log10 RC` minus its value at 1 kHz.
+- **RIAA playback (replay):** `H = (1 + j w 318e-6) / ((1 + j w 3180e-6)(1 + j w 75e-6))`, `w = 2 pi f`, dB = `20 log10 |H|` minus its value at 1 kHz (about +19.27 dB at 20 Hz, -19.62 dB at 20 kHz). The recording curve is the inverse (use invert).
+- **FM pre-emphasis 75 us / 50 us:** `|H| = sqrt(1 + (w tau)^2)`, `tau = 75e-6` or `50e-6` s. It is 0 dB at low frequencies (not shifted), +3.01 dB at `1/(2 pi tau)`. The de-emphasis is the inverse.
+- **Invert (every layer kind):** a layer with `invert: true` contributes the **negative** of its value at every frequency. It is a property of the layer, off unless exactly `true`. Inverting twice is the same as not inverting.
 
 ### 4.5 Defaults for a new document
 - **Layers:** `points` (`[[20,0],[20000,0]]`, on), `lfTilt` (3 dB/oct, pivot 1 kHz, off), `fullTilt` (off), `hfTilt` (off), `hpf` (off), `lpf` (off).

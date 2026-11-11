@@ -1,6 +1,9 @@
 # Release notes
 
 ## Unreleased
+- Bell filter width can be entered as Q or as bandwidth in octaves (between the half-gain points). The layer title shows both.
+- Weighting layer (A, C, RIAA, FM pre-emphasis) and an Invert button on every layer, with presets for them.
+- Cinema X-curve presets from SMPTE ST 202:2010 Table 1 (medium theatre) and the Table A.1 size corrections (small and large). Sources in `docs/REFERENCE_CURVES.md`.
 - More filter shapes (SPEC §4.4 to §4.4e): high shelf, bell (peak, notch, band-stop), hill (haystack bump) and resonant 2nd-order high-pass and low-pass layers; Bessel and Chebyshev (1 dB ripple) filter types; Butterworth and Linkwitz-Riley up to 96 dB/oct. The Sub boost layer is now called Low shelf.
 - Lines-only toggle, random colour that contrasts with the theme, and Reset to imported .crv.
 - Y offset: slide the plot's visible dB window up or down by up to ±20 dB (next to the zoom). A view setting only.

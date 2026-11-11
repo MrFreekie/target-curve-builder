@@ -7,14 +7,14 @@ Build, import, visualise and edit sound system tuning **target curves** in the b
 TF target curves need a measurement-capable edition of **Smaart 9.4 or later**, or Smaart Data Modeler. Smaart RTA can't import them.
 
 ## What it does
-- **Layers, summed in dB:** points, full-spectrum tilt, LF tilt (with an optional floor), HF tilt, high-pass and low-pass filters (Butterworth and Linkwitz-Riley), a gain offset, low and high **shelves** (± dB below or above a corner, so a low shelf is the sub "haystack"), a **bell** (peak, notch or band-stop), a **hill** (smooth bump), and resonant 2nd-order filters. Filter types are Butterworth, Linkwitz-Riley (up to 96 dB/oct), Bessel and Chebyshev. Each layer can be switched on or off, edited, reordered or deleted.
+- **Layers, summed in dB:** points, full-spectrum tilt, LF tilt (with an optional floor), HF tilt, high-pass and low-pass filters (Butterworth and Linkwitz-Riley), a gain offset, low and high **shelves** (± dB below or above a corner, so a low shelf is the sub "haystack"), a **bell** (peak, notch or band-stop, width as Q or bandwidth in octaves), a **hill** (smooth bump), and resonant 2nd-order filters. Filter types are Butterworth, Linkwitz-Riley (up to 96 dB/oct), Bessel and Chebyshev. Each layer can be switched on or off, edited, reordered or deleted.
 - **Live plot:** log frequency axis from 20 Hz to 20 kHz, the Smaart tolerance band, a hover readout, and a zoom from ±15 to ±40 dB (or auto), and a Y offset of ±20 dB to slide the view up or down.
 - **Edit points on the plot:** drag a point up or down to change its level. Hold Shift to move its frequency as well (snaps to 1/24 octave). With a point focused, use Up/Down to nudge it and Left/Right to switch point.
 - **Import:** drop a `.crv` anywhere on the page, or use **Import .crv**. The original stays on the plot as a dashed grey line. Spectrum curves can be viewed and converted to TF.
 - **Output grid:** 1/12 octave by default, or 1/1, 1/3, 1/6, 1/24, keep the imported file's own frequencies, or **Breakpoints only**: just the points needed to stay within a chosen dB error (Smaart draws straight lines between points).
 - **Undo and redo:** Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z, at least 50 steps. Your work is autosaved in the browser.
 - **Name suggestion:** one click names the curve from its layers, for example `Tilt_3dBoct_1000Hz_HPF32_LR48`.
-- **Presets:** save curves in the browser, or as JSON files you can share. Three built-in presets are included.
+- **Presets:** save curves in the browser, or as JSON files you can share. Built-in presets include A and C weighting (and inverses), RIAA, FM pre-emphasis, and the SMPTE ST 202:2010 cinema X-curve for small, medium and large theatres. Sources are in `docs/REFERENCE_CURVES.md`.
 - **Export:** one file at a time, as a Smaart target curve (`.crv`) or a Smaart ASCII trace (`.txt`: Hz, dB, phase 0, coherence 1). The `.crv` is written with tabs only, 6-decimal values and CRLF line endings, as Smaart expects. An unchanged import exports byte for byte as it came in.
 
 ## How to use it
@@ -40,4 +40,5 @@ python3 -I reference/curve_ref.py --check
 - `docs/SPEC.md`: requirements, maths, file format, UI.
 - `docs/BUILD_PLAN.md`: phases, agents, models and effort.
 - `docs/SMAART_NOTES.md`: what we know about how Smaart reads `.crv` files, and the open checks.
+- `docs/REFERENCE_CURVES.md`: where each built-in reference curve comes from.
 - `docs/RELEASE_NOTES.md`: what is in each release.
