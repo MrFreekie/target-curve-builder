@@ -190,6 +190,32 @@ export function weightingDb(curve, f) {
 
 // ---------------------------------------------------------------- Shapes
 /**
+ * The outline of a dog, side on, facing right, as heights from 0 to 1 against u from -1 (tail) to +1 (nose).
+ * A response curve has one value per frequency, so this is the skyline of the dog: tail, back, neck, head with a
+ * pointed ear, forehead, stop, snout and nose.
+ * @type {ReadonlyArray<readonly [number, number]>}
+ */
+export const DOG_OUTLINE = [
+  [-1.0, 0.4], [-0.94, 0.55], [-0.88, 0.3], [-0.8, 0.26], [-0.55, 0.3], [-0.3, 0.36], [-0.12, 0.4],
+  [0.0, 0.5], [0.08, 0.66], [0.14, 0.95], [0.22, 0.68], [0.3, 0.72], [0.44, 0.64], [0.56, 0.58],
+  [0.74, 0.55], [0.88, 0.5], [0.96, 0.42], [1.0, 0.3],
+];
+
+/** Straight-line interpolation through the dog's outline. */
+function dogHeight(u) {
+  const pts = DOG_OUTLINE;
+  if (u <= pts[0][0]) return pts[0][1];
+  for (let i = 1; i < pts.length; i++) {
+    if (u <= pts[i][0]) {
+      const [u0, g0] = pts[i - 1];
+      const [u1, g1] = pts[i];
+      return g0 + ((g1 - g0) * (u - u0)) / (u1 - u0);
+    }
+  }
+  return pts[pts.length - 1][1];
+}
+
+/**
  * Fun shapes drawn on the graph against log frequency: u = log2(f/fc) / (width/2), so the shape spans
  * u from -1 to +1 (the full base width, in octaves) and is 0 outside. `db` is the height (negative for a dip).
  * t = (u + 1) / 2 runs from 0 at the left edge to 1 at the right edge. `count` is the number of cycles for the
@@ -207,6 +233,7 @@ export const SHAPES = {
   rampDown: { label: "Ramp down (sawtooth)", countLabel: null, value: (u) => (1 - u) / 2 },
   sine: { label: "Sine wave", countLabel: "Cycles", value: (u, flat, count) => Math.sin(Math.PI * count * (u + 1)) },
   square: { label: "Square wave", countLabel: "Cycles", value: (u, flat, count) => (Math.sin(Math.PI * count * (u + 1)) >= 0 ? 1 : -1) },
+  dog: { label: "Dog (side profile)", countLabel: null, value: (u) => dogHeight(u) },
   stairs: { label: "Staircase (rising)", countLabel: "Steps", value: (u, flat, count) => {
     const n = Math.max(2, Math.round(count));
     return Math.min(n - 1, Math.floor(((u + 1) / 2) * n)) / (n - 1);
@@ -226,7 +253,39 @@ export const SHAPES = {
  */
 export function shapeDb(shape, f, fc, width, db, flat = 0.5, count = 3) {
   if (typeof shape !== "string" || !Object.hasOwn(SHAPES, shape)) throw new RangeError(`Unknown shape ${shape}`);
-  const u = Math.log2(f / fc) / (width / 2);
-  if (!(Math.abs(u) <= 1)) return 0; // also 0 for NaN
+  let u = Math.log2(f / fc) / (width / 2);
+  // A frequency within 1e-12 of an edge (floating-point noise) counts as exactly on the edge.
+  if (!(Math.abs(u) <= 1 + 1e-12)) return 0; // also 0 for NaN
+  u = Math.max(-1, Math.min(1, u));
   return db * SHAPES[shape].value(u, flat, count);
+}
+
+// ---------------------------------------------------------------- Mesa-style asymmetric filter
+/** Raised-cosine step: 0 below t = 0, 1 above t = 1, and 0.5 (1 - cos(pi t)) between. */
+function rcStep(t) {
+  if (!(t > 0)) return 0;
+  if (t >= 1) return 1;
+  return 0.5 * (1 - Math.cos(Math.PI * t));
+}
+
+/**
+ * Mesa-style asymmetric filter, built as the description of the Lake Mesa EQ says: two raised-cosine shelf steps
+ * (half a cosine cycle against log frequency), one rising and one falling, each with its own slope, summed.
+ * The rising step is centred on `fLow` and spans `wLow` octaves; the falling step is centred on `fHigh` and spans
+ * `wHigh` octaves. `fLow` and `fHigh` are the half-gain points. This is our own construction from that description,
+ * not Lake's published algorithm.
+ * @param {number} f Frequency in Hz.
+ * @param {number} fLow Lower edge (half-gain point) in Hz.
+ * @param {number} fHigh Upper edge (half-gain point) in Hz.
+ * @param {number} wLow Width of the lower flank in octaves.
+ * @param {number} wHigh Width of the upper flank in octaves.
+ * @param {number} db Gain in dB (negative cuts).
+ * @returns {number} dB
+ */
+export function mesaDb(f, fLow, fHigh, wLow, wHigh, db) {
+  const up = rcStep(Math.log2(f / fLow) / wLow + 0.5);
+  const down = rcStep(Math.log2(f / fHigh) / wHigh + 0.5);
+  // Where the two flanks overlap the plain difference can go below 0, which would turn a boost into a cut; keep it
+  // between 0 and the full gain.
+  return db * Math.max(0, Math.min(1, up - down));
 }

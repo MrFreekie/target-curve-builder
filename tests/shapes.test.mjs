@@ -206,3 +206,33 @@ test("trapezoid without a flat value uses the default 0.5 everywhere, including 
   d.layers.push({ id: "t", kind: "shape", on: true, shape: "trapezoid", fc: 1000, width: 4, db: 6 });
   assert.ok(buildCrv(d).text);
 });
+
+// ---- edges: floating-point noise and 6-decimal rounding must not drop the edge value
+test("a frequency exactly on a shape edge keeps its edge value, even with floating-point noise", () => {
+  for (const [fc, width] of [[331.48922, 2.6135], [1000, 8], [63, 1.7], [4200.123, 5.5], [20.5, 0.9]]) {
+    const lo = fc * 2 ** (-width / 2), hi = fc * 2 ** (width / 2);
+    for (const f of [lo, hi]) {
+      assert.equal(shapeDb("box", f, fc, width, 6), 6, `box edge ${f}`);
+      assert.ok(shapeDb("dog", f, fc, width, 12) > 3, `dog edge ${f}`);
+    }
+  }
+});
+
+test("breakpoints exports keep the edge vertices of box and dog shapes at random centres and widths", () => {
+  for (let i = 0; i < 200; i++) {
+    const fc = 80 + ((i * 7919) % 5000) + (i % 13) * 0.37, width = 1 + ((i * 31) % 70) / 10 + 0.013 * (i % 7);
+    for (const shape of ["box", "dog"]) {
+      const d = newDoc();
+      d.layers.push({ id: "s", kind: "shape", on: true, shape, fc, width, db: 12, flat: 0.5, count: 3 });
+      d.grid = { mode: "simplified", fmin: 20, fmax: 20000, epsilon: 0.001 };
+      const pts = evaluate(d);
+      const lowEdge = fc * 2 ** (-width / 2), highEdge = fc * 2 ** (width / 2);
+      if (lowEdge < 21 || highEdge > 19900) continue;
+      const first = pts.find(([f]) => f >= lowEdge * (1 - 1e-5));
+      const last = [...pts].reverse().find(([f]) => f <= highEdge * (1 + 1e-5));
+      const want = shape === "box" ? [12, 12] : [12 * 0.4, 12 * 0.3];
+      close(first[1], want[0], 2e-5, `${shape} low edge at fc ${fc} width ${width}`);
+      close(last[1], want[1], 2e-5, `${shape} high edge at fc ${fc} width ${width}`);
+    }
+  }
+});

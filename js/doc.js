@@ -18,6 +18,7 @@ export const LAYER_KINDS = {
   rLpf: "Resonant LPF (2nd order)",
   weighting: "Weighting (A, C, RIAA, FM)",
   shape: "Shape (pyramid, box, half circle...)",
+  mesa: "Mesa-style asymmetric filter",
   hpf: "HPF",
   lpf: "LPF",
   gain: "Gain",
@@ -51,7 +52,16 @@ export function newDoc() {
     normalise: { on: false, at: 1000 },
     original: null,
     originalProps: null,
+    groups: defaultGroups(),
   };
+}
+
+/** Number of layer groups (SPEC §4.8). */
+export const GROUP_COUNT = 3;
+
+/** Three groups, named A, B and C, all shown. */
+export function defaultGroups() {
+  return ["A", "B", "C"].map((name) => ({ name, on: true }));
 }
 
 /** A fresh layer of the given kind, switched on. */
@@ -69,6 +79,7 @@ export function newLayer(kind) {
     case "rHpf": return { ...base, fc: 40, q: 1 };
     case "rLpf": return { ...base, fc: 16000, q: 1 };
     case "weighting": return { ...base, curve: "A" };
+    case "mesa": return { ...base, fLow: 80, fHigh: 400, wLow: 1, wHigh: 2, db: 6 };
     case "shape": return { ...base, shape: "pyramid", fc: 1000, width: 2, db: 6, flat: 0.5, count: 3 };
     case "hpf": return { ...base, fc: 32, type: "LR", slope: 48 };
     case "lpf": return { ...base, fc: 16000, type: "LR", slope: 24 };
@@ -105,6 +116,7 @@ function loadLayer(l) {
   if (!isObj(l) || typeof l.kind !== "string" || !Object.hasOwn(LAYER_KINDS, l.kind)) throw new Error("Unknown layer type.");
   const out = { id: newId(), kind: l.kind, on: l.on !== false && l.on !== 0 };
   if (l.invert === true) out.invert = true; // any layer can be flipped upside down
+  if (Number.isInteger(l.group) && l.group >= 1 && l.group <= GROUP_COUNT) out.group = l.group; // see §4.8
   switch (l.kind) {
     case "points":
       out.points = loadPoints(l.points);
@@ -133,6 +145,14 @@ function loadLayer(l) {
     case "hill":
       out.fc = num(l.fc, "centre frequency", { positive: true });
       out.width = ranged(num(l.width, "width"), LAYER_LIMITS.width, "width");
+      out.db = ranged(num(l.db, "gain"), LAYER_LIMITS.db, "gain");
+      break;
+    case "mesa":
+      out.fLow = num(l.fLow, "lower frequency", { positive: true });
+      out.fHigh = num(l.fHigh, "upper frequency", { positive: true });
+      if (!(out.fLow < out.fHigh)) throw new Error("The lower frequency must be below the upper frequency.");
+      out.wLow = ranged(num(l.wLow, "lower width"), LAYER_LIMITS.width, "lower width");
+      out.wHigh = ranged(num(l.wHigh, "upper width"), LAYER_LIMITS.width, "upper width");
       out.db = ranged(num(l.db, "gain"), LAYER_LIMITS.db, "gain");
       break;
     case "shape":
@@ -231,6 +251,11 @@ export function loadDoc(obj) {
 
   if (!Array.isArray(obj.layers) || obj.layers.length > MAX_LAYERS) throw new Error("Invalid layer list.");
   const n = isObj(obj.normalise) ? obj.normalise : {};
+  const groups = defaultGroups().map((def, i) => {
+    const g = Array.isArray(obj.groups) && isObj(obj.groups[i]) ? obj.groups[i] : {};
+    const name = typeof g.name === "string" ? clean(g.name).replace(/	/g, " ").trim().slice(0, 24) : "";
+    return { name: name || def.name, on: g.on !== false };
+  });
   return {
     version: 1,
     props,
@@ -239,6 +264,7 @@ export function loadDoc(obj) {
     normalise: { on: n.on === true, at: Number.isFinite(n.at) && n.at > 0 ? n.at : 1000 },
     original,
     originalProps: original ? originalProps : null,
+    groups,
   };
 }
 

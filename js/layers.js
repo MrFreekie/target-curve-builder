@@ -1,6 +1,6 @@
 // Pure layer maths and the filter registry. No DOM access. See docs/SPEC.md §4.
 import { pos } from "./curve.js";
-import { bellDb, resonantDb, hillDb, besselDb, chebyshevDb, weightingDb, shapeDb } from "./eq.js";
+import { bellDb, resonantDb, hillDb, besselDb, chebyshevDb, weightingDb, shapeDb, mesaDb } from "./eq.js";
 
 /** Allowed ranges for layer parameters (SPEC §4.4b to §4.4e). */
 export const LAYER_LIMITS = { q: [0.1, 50], resonantQ: [0.1, 20], width: [0.1, 10], db: [-60, 60], flat: [0, 0.99], count: [0.5, 16] };
@@ -141,6 +141,8 @@ function layerValue(f, layer) {
       return hillDb(f, layer.fc, layer.width, layer.db);
     case "weighting":
       return weightingDb(layer.curve, f);
+    case "mesa":
+      return mesaDb(f, layer.fLow, layer.fHigh, layer.wLow, layer.wHigh, layer.db);
     case "shape":
       return shapeDb(layer.shape, f, layer.fc, layer.width, layer.db, layer.flat, layer.count);
     case "subBoost":

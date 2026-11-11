@@ -207,4 +207,18 @@ export const BUILT_IN_PRESETS = [
     },
   })),
   ...cinemaPresets(),
+  {
+    name: "Dog (fun: side profile, 12 dB tall, 8 octaves wide)",
+    build() {
+      const d = newDoc();
+      d.props.name = "Dog";
+      d.props.line = 4;
+      d.props.color = "ffa0522d"; // sienna brown
+      const dog = newLayer("shape");
+      Object.assign(dog, { shape: "dog", fc: 1000, width: 8, db: 12 });
+      d.layers.push(dog);
+      d.grid = { mode: "simplified", fraction: 12, fmin: 20, fmax: 20000, epsilon: 0.05 }; // the outline's corners only
+      return d;
+    },
+  },
 ];

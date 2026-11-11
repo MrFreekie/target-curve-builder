@@ -1,5 +1,5 @@
 // UI state and wiring. Maths lives in curve.js / layers.js; file formats in formats/.
-import { evaluate, effectiveRange, layerGhosts } from "./curve.js";
+import { evaluate, effectiveRange, layerGhosts, visibleLayers } from "./curve.js";
 import { FILTERS } from "./layers.js";
 import { getAdapter, writableAdapters } from "./formats/index.js";
 import { fmt6, pickerToSmaart, smaartToPicker, crvFileName, exportFileName } from "./formats/smaart.js";
@@ -18,7 +18,7 @@ export { newDoc, newLayer };
 function layerIssues(doc) {
   const out = [];
   const bad = (m) => out.push({ level: "error", message: m });
-  for (const l of doc.layers) {
+  for (const l of visibleLayers(doc)) { // layers hidden by their group don't count
     if (l.on === false) continue;
     const name = LAYER_KINDS[l.kind];
     if (l.kind === "points") {
@@ -170,13 +170,14 @@ function startApp() {
 
   function refreshAll(focus) {
     renderProps();
+    renderGroups();
     renderLayers(focus);
     update();
   }
 
   // ---- drag handles on the plot (edit the first points layer that is on)
   let dragBase = null;
-  const pointsLayer = () => doc.layers.find((l) => l.kind === "points" && l.on);
+  const pointsLayer = () => visibleLayers(doc).find((l) => l.kind === "points" && l.on);
   function dragStart(i) {
     const l = pointsLayer();
     if (!l || !l.points[i]) return;
@@ -265,12 +266,13 @@ function startApp() {
   }
 
   function layerTitle(l) {
-    return baseTitle(l) + (l.invert === true ? " (inverted)" : "");
+    return baseTitle(l) + (l.invert === true ? " (inverted)" : "") + (l.group ? ` [${groupName(l.group)}${hiddenByGroup(l) ? ", hidden" : ""}]` : "");
   }
 
   function baseTitle(l) {
     switch (l.kind) {
       case "weighting": return WEIGHTINGS[l.curve]?.label ?? "Weighting";
+      case "mesa": return `Mesa ${l.db > 0 ? "+" : ""}${l.db} dB, ${l.fLow} to ${l.fHigh} Hz, flanks ${l.wLow} / ${l.wHigh} oct`;
       case "shape": return `${SHAPES[l.shape]?.label ?? "Shape"} ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, ${l.width} oct wide`;
       case "points": return `Points (${l.points.length})${l.label ? ` – ${l.label}` : ""}`;
       case "lfTilt": return `LF tilt ${l.dbPerOct} dB/oct`;
@@ -399,6 +401,21 @@ function startApp() {
       case "rLpf":
         body.append(numField("Corner frequency (Hz)", l.fc, set("fc")), numField("Q (0.707 flat, higher peaks)", l.q, set("q")));
         break;
+      case "mesa":
+        body.append(
+          numField("Gain (± dB, up to 60)", l.db, set("db")),
+          numField("Lower edge, half-gain point (Hz)", l.fLow, set("fLow")),
+          numField("Upper edge, half-gain point (Hz)", l.fHigh, set("fHigh")),
+          numField("Lower flank width (octaves)", l.wLow, set("wLow"), { check: (n) => n > 0 }),
+          numField("Upper flank width (octaves)", l.wHigh, set("wHigh"), { check: (n) => n > 0 }),
+        );
+        {
+          const note = document.createElement("p");
+          note.className = "note";
+          note.textContent = "A narrower flank is a steeper slope. Mesa-style: two raised-cosine shelf steps, each with its own slope.";
+          body.append(note);
+        }
+        break;
       case "shape":
         body.append(
           selectField("Shape", Object.entries(SHAPES).map(([id, sh]) => [id, sh.label]), l.shape, (v) => { l.shape = v; update(); renderLayers([l.id, "toggle"]); }),
@@ -430,6 +447,12 @@ function startApp() {
         fillSlope();
       }
     }
+    // Which group the layer belongs to (SPEC §4.8): none means it is never hidden by a group.
+    body.append(selectField("Group", [["0", "None"], ...(doc.groups ?? []).map((g, n) => [String(n + 1), g.name])], String(l.group ?? 0), (v) => {
+      if (Number(v) > 0) l.group = Number(v); else delete l.group;
+      renderLayers([l.id, "toggle"]);
+      update();
+    }));
     // Any layer can be flipped upside down (its dB values change sign).
     const flip = document.createElement("button");
     flip.type = "button";
@@ -447,12 +470,16 @@ function startApp() {
   }
 
   /** Rebuild the layer list, then put keyboard focus back on `focus` = [layerId, action]. */
+  /** Is this layer hidden because its group is hidden? */
+  const hiddenByGroup = (l) => !visibleLayers(doc).includes(l);
+  const groupName = (n) => doc.groups?.[n - 1]?.name ?? "";
+
   function renderLayers(focus) {
     const ul = $("layers");
     ul.replaceChildren();
     doc.layers.forEach((l, i) => {
       const li = document.createElement("li");
-      li.className = `layer${l.on ? "" : " off"}`;
+      li.className = `layer${l.on ? "" : " off"}${hiddenByGroup(l) ? " grouphidden" : ""}`;
       li.dataset.id = l.id;
       stripe(li, l, i);
       const head = document.createElement("div");
@@ -498,12 +525,62 @@ function startApp() {
       ul.append(li);
     });
     refreshTitles();
+    updateGroupCounts();
     if (focus) {
       const target = focus[1] === "add" ? $("add-kind")
         : document.querySelector(`#layers li[data-id="${focus[0]}"] [data-action="${focus[1]}"]:not(:disabled)`)
           ?? document.querySelector(`#layers li[data-id="${focus[0]}"] .title`);
       target?.focus();
     }
+  }
+
+  // ---- layer groups: three named groups with independent show/hide (SPEC §4.8)
+  function renderGroups() {
+    const host = $("groups");
+    host.replaceChildren();
+    (doc.groups ?? []).forEach((g, n) => {
+      const row = document.createElement("div");
+      row.className = "group-row";
+      const name = document.createElement("input");
+      name.type = "text";
+      name.value = g.name;
+      name.maxLength = 24;
+      name.setAttribute("aria-label", `Name of group ${n + 1}`);
+      name.addEventListener("input", () => {
+        g.name = name.value.trim() ? name.value : `${"ABC"[n]}`;
+        refreshTitles();
+        update();
+      });
+      name.addEventListener("change", () => { renderGroups(); renderLayers(); });
+      const count = doc.layers.filter((l) => l.group === n + 1).length;
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.setAttribute("aria-pressed", String(g.on !== false));
+      btn.textContent = g.on !== false ? "Shown" : "Hidden";
+      btn.setAttribute("aria-label", `${g.name}, ${count} layer${count === 1 ? "" : "s"}: ${g.on !== false ? "shown. Press to hide" : "hidden. Press to show"}`);
+      btn.addEventListener("click", () => {
+        g.on = g.on === false;
+        renderGroups();
+        renderLayers();
+        update();
+      });
+      const cnt = document.createElement("span");
+      cnt.className = "group-count";
+      cnt.textContent = `${count} layer${count === 1 ? "" : "s"}`;
+      row.append(name, btn, cnt);
+      host.append(row);
+    });
+  }
+
+  /** Refresh the "N layers" text and button labels of the group bar without rebuilding it. */
+  function updateGroupCounts() {
+    document.querySelectorAll("#groups .group-row").forEach((row, n) => {
+      const g = doc.groups?.[n];
+      if (!g) return;
+      const count = doc.layers.filter((l) => l.group === n + 1).length;
+      row.querySelector(".group-count").textContent = `${count} layer${count === 1 ? "" : "s"}`;
+      row.querySelector("button").setAttribute("aria-label", `${g.name}, ${count} layer${count === 1 ? "" : "s"}: ${g.on !== false ? "shown. Press to hide" : "hidden. Press to show"}`);
+    });
   }
 
   function refreshTitles() {
@@ -603,7 +680,7 @@ function startApp() {
   const ghostHue = (index) => (index * 47 + 15) % 360;
   /** Colour stripe on a layer row that matches its ghost line. */
   function stripe(li, l, i) {
-    li.classList.toggle("ghosted", ghostsOn && !!l.on);
+    li.classList.toggle("ghosted", ghostsOn && !!l.on && !hiddenByGroup(l));
     li.style.setProperty("--gh", String(ghostHue(i)));
   }
   const applyGhostsUi = () => {
@@ -1096,6 +1173,7 @@ function startApp() {
   });
 
   renderProps();
+  renderGroups();
   renderLayers();
   update();
 }

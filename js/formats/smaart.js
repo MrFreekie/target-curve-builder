@@ -1,6 +1,6 @@
 // Smaart .crv adapters: TF (read + write) and spectrum (read only).
 // Pure module: no DOM access. Rules are in docs/SPEC.md §5 and §6.
-import { round6 } from "../curve.js";
+import { round6, visibleLayers } from "../curve.js";
 import { FILTERS, LAYER_LIMITS } from "../layers.js";
 import { WEIGHTINGS, SHAPES } from "../eq.js";
 
@@ -241,7 +241,7 @@ export function validateTf(doc, points) {
   if (props.offset !== null && props.offset !== undefined && !Number.isFinite(Number(props.offset))) err("Offset must be a number.");
   if (!crvFileName(props.name)) err("Give the curve a file name.");
 
-  for (const layer of doc.layers ?? []) {
+  for (const layer of visibleLayers({ layers: doc.layers ?? [], groups: doc.groups })) {
     if ((layer.kind === "hpf" || layer.kind === "lpf" || layer.kind === "subBoost" || layer.kind === "hiShelf") && layer.on !== false) {
       const filter = Object.hasOwn(FILTERS, layer.type) ? FILTERS[layer.type] : undefined;
       const label = { subBoost: "Low shelf", hiShelf: "High shelf" }[layer.kind] ?? layer.kind.toUpperCase();
@@ -255,6 +255,15 @@ export function validateTf(doc, points) {
     }
     if (layer.kind === "weighting" && layer.on !== false && !(typeof layer.curve === "string" && Object.hasOwn(WEIGHTINGS, layer.curve))) {
       err(`Weighting: unknown curve "${layer.curve}".`);
+    }
+    if (layer.kind === "mesa" && layer.on !== false) {
+      const [wlo, whi] = LAYER_LIMITS.width;
+      if (!(Number(layer.fLow) > 0 && Number(layer.fHigh) > 0)) err("Mesa: frequencies must be greater than 0 Hz.");
+      else if (!(Number(layer.fLow) < Number(layer.fHigh))) err("Mesa: the lower frequency must be below the upper frequency.");
+      for (const [key, label] of [["wLow", "lower"], ["wHigh", "upper"]]) {
+        if (!(Number(layer[key]) >= wlo && Number(layer[key]) <= whi)) err(`Mesa: ${label} width must be between ${wlo} and ${whi} octaves.`);
+      }
+      if (!(Math.abs(Number(layer.db)) <= LAYER_LIMITS.db[1])) err(`Mesa: gain must be between ${LAYER_LIMITS.db[0]} and +${LAYER_LIMITS.db[1]} dB.`);
     }
     if (layer.kind === "shape" && layer.on !== false) {
       if (!(typeof layer.shape === "string" && Object.hasOwn(SHAPES, layer.shape))) err(`Shape: unknown shape "${layer.shape}".`);

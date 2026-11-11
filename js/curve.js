@@ -1,6 +1,7 @@
 // Pure curve maths: frequency grids, octave positions, evaluation, rounding.
 // No DOM access, no global state. See docs/SPEC.md §3, §4.6, §4.7.
 import { layerDb } from "./layers.js";
+import { DOG_OUTLINE } from "./eq.js";
 
 /** Nominal ISO 1/3-octave labels, 20 Hz to 20 kHz. */
 export const NOMINAL_3 = [20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500,
@@ -92,6 +93,18 @@ export function effectiveRange(grid = {}) {
   return [lo, hi];
 }
 
+/**
+ * The layers that count: those not hidden by their group (SPEC §4.8). A layer with no group, or a document
+ * with no groups, is never hidden. The layers' own on/off switches are separate and are applied by the maths.
+ * @param {{layers: object[], groups?: {on?: boolean}[]}} doc
+ * @returns {object[]}
+ */
+export function visibleLayers(doc) {
+  const groups = Array.isArray(doc.groups) ? doc.groups : [];
+  // only groups 1 to 3 exist (SPEC 4.8); any other group number never hides a layer
+  return doc.layers.filter((l) => !(Number.isInteger(l.group) && l.group >= 1 && l.group <= 3 && groups[l.group - 1] && groups[l.group - 1].on === false));
+}
+
 /** Default maximum error (dB) for the "simplified" grid; the allowed range is 0.001 to 12. */
 export const DEFAULT_EPSILON = 0.1;
 
@@ -108,11 +121,31 @@ export function keyFrequencies(layers) {
     if (l.kind === "points") for (const p of l.points) out.push(p[0]);
     else {
       for (const k of ["pivot", "corner", "floor", "fc"]) if (l[k] != null) out.push(l[k]);
+      if (l.kind === "mesa") {
+        // the half-gain points and both ends of each raised-cosine flank
+        for (const [fc, w] of [[l.fLow, l.wLow], [l.fHigh, l.wHigh]]) {
+          if (Number(fc) > 0 && Number(w) > 0) out.push(fc * 2 ** (-w / 2), fc * 2 ** (w / 2));
+        }
+        if (Number(l.fLow) > 0) out.push(l.fLow);
+        if (Number(l.fHigh) > 0) out.push(l.fHigh);
+      }
       if (l.kind === "shape" && Number(l.fc) > 0 && Number(l.width) > 0) {
         // the corners of a shape: its edges, and for a trapezoid the ends of the flat top
         const half = Number(l.width) / 2;
         const spans = l.shape === "trapezoid" ? [half, half * Math.min(0.99, Math.max(0, Number(l.flat ?? 0.5)))] : [half];
-        for (const s of spans) out.push(l.fc * 2 ** -s, l.fc * 2 ** s);
+        // The edges are rounded inward to 6 decimals (as the output frequencies are), so a rounded edge never falls
+        // just outside the shape, where its value would be 0.
+        const lowEdge = (f) => Math.ceil(f * 1e6) / 1e6;
+        const highEdge = (f) => Math.floor(f * 1e6) / 1e6;
+        out.push(lowEdge(l.fc * 2 ** -half), highEdge(l.fc * 2 ** half));
+        if (spans.length > 1) out.push(l.fc * 2 ** -spans[1], l.fc * 2 ** spans[1]);
+        // the outline of the dog is a polyline: every vertex is a corner
+        if (l.shape === "dog") {
+          for (const [u] of DOG_OUTLINE) {
+            const f = l.fc * 2 ** (u * half);
+            out.push(Math.abs(u) === 1 ? (u < 0 ? lowEdge(f) : highEdge(f)) : f);
+          }
+        }
         // the jumps of the square wave and the staircase are corners too
         const n = Number(l.count ?? 3);
         const jumps = l.shape === "square" ? Math.ceil(2 * n) : l.shape === "stairs" ? Math.max(2, Math.round(n)) : 0;
@@ -202,12 +235,12 @@ export function evaluate(doc, freqs) {
     const [lo, hi] = effectiveRange(grid);
     const ranged = { ...grid, fmin: lo, fmax: hi };
     if (!(lo <= hi)) freqs = []; // an empty range (a trim past the other end of the grid) holds no points
-    else if (simplified) freqs = denseGrid({ ...doc, grid: ranged });
+    else if (simplified) freqs = denseGrid({ ...doc, grid: ranged, layers: visibleLayers(doc) });
     else if (grid.mode === "original" && doc.original) {
       freqs = doc.original.map((p) => p[0]).filter((f) => (!Number.isFinite(grid.trimLow) || f >= grid.trimLow) && (!Number.isFinite(grid.trimHigh) || f <= grid.trimHigh));
     } else freqs = makeGrid(ranged);
   }
-  const layers = doc.layers;
+  const layers = visibleLayers(doc);
   let out = freqs.map((f) => [f, totalDb(f, layers)]);
   const nm = doc.normalise;
   if (nm && nm.on) {
@@ -233,12 +266,14 @@ export function evaluate(doc, freqs) {
 export function layerGhosts(doc) {
   let freqs;
   try {
-    freqs = denseGrid({ grid: { fmin: 20, fmax: 20000 }, layers: doc.layers });
+    freqs = denseGrid({ grid: { fmin: 20, fmax: 20000 }, layers: visibleLayers(doc) });
   } catch {
     return []; // a layer too broken to list its corners: the export check reports it
   }
   const out = [];
+  const shown = new Set(visibleLayers(doc));
   doc.layers.forEach((layer, index) => {
+    if (!shown.has(layer)) return; // hidden by its group
     if (layer.on !== undefined && !layer.on) return;
     try {
       const points = freqs.map((f) => [f, layerDb(f, layer) + 0]);
