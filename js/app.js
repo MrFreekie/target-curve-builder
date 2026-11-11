@@ -266,7 +266,7 @@ function startApp() {
   }
 
   function layerTitle(l) {
-    return baseTitle(l) + (l.invert === true ? " (inverted)" : "") + (l.group ? ` [${groupName(l.group)}${hiddenByGroup(l) ? ", hidden" : ""}]` : "");
+    return baseTitle(l) + (l.invert === true ? " (inverted)" : "") + (hiddenByGroup(l) ? ` [${groupName(l.group)}, hidden]` : "");
   }
 
   function baseTitle(l) {
@@ -447,14 +447,6 @@ function startApp() {
         fillSlope();
       }
     }
-    // Which group the layer belongs to (SPEC §4.8): none means it is never hidden by a group.
-    body.append(selectField("Group", [["0", "None"], ...(doc.groups ?? []).map((g, n) => [String(n + 1), g.name])], String(l.group ?? 0), (v) => {
-      if (Number(v) > 0) l.group = Number(v); else delete l.group;
-      activeTab = tabOf(l); // follow the layer to the tab it now belongs to
-      renderGroups();
-      renderLayers([l.id, "toggle"]);
-      update();
-    }));
     // Any layer can be flipped upside down (its dB values change sign).
     const flip = document.createElement("button");
     flip.type = "button";
@@ -476,10 +468,10 @@ function startApp() {
   const hiddenByGroup = (l) => !visibleLayers(doc).includes(l);
   const groupName = (n) => doc.groups?.[n - 1]?.name ?? "";
 
-  /** Which tab is open: 0 holds the layers with no group, 1 to 3 are the groups (a view setting, not saved). */
-  let activeTab = 0;
-  const tabOf = (l) => (Number.isInteger(l.group) && l.group >= 1 && l.group <= 3 ? l.group : 0);
-  const tabName = (n) => (n === 0 ? "Ungrouped" : doc.groups?.[n - 1]?.name ?? `Group ${n}`);
+  /** Which group's tab is open, 1 to 3 (a view setting, not saved). */
+  let activeTab = 1;
+  const tabOf = (l) => (Number.isInteger(l.group) && l.group >= 1 && l.group <= 3 ? l.group : 1);
+  const tabName = (n) => doc.groups?.[n - 1]?.name ?? `Group ${n}`;
 
   function renderLayers(focus) {
     const ul = $("layers");
@@ -488,7 +480,7 @@ function startApp() {
     if (!mine.length) {
       const li = document.createElement("li");
       li.className = "empty";
-      li.textContent = activeTab === 0 ? "No ungrouped layers. Use Add layer below." : `No layers in ${tabName(activeTab)} yet. Use Add layer below.`;
+      li.textContent = `No layers in ${tabName(activeTab)} yet. Use Add layer below.`;
       ul.append(li);
     }
     mine.forEach((l, pos) => {
@@ -555,7 +547,7 @@ function startApp() {
     }
   }
 
-  // ---- layer tabs: Ungrouped plus three named groups with independent show/hide (SPEC 4.8)
+  // ---- layer tabs: three named groups with independent show/hide (SPEC 4.8)
   function selectTab(n, { focusTab = false } = {}) {
     activeTab = n;
     renderGroups();
@@ -563,12 +555,32 @@ function startApp() {
     if (focusTab) $(`tab-${n}`)?.focus();
   }
 
+  /** An eye (open when the group is shown, crossed out when hidden) as an SVG, built without innerHTML. */
+  function eyeIcon(open) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("width", "18");
+    svg.setAttribute("height", "18");
+    svg.setAttribute("aria-hidden", "true");
+    const add = (tag, attrs) => {
+      const e = document.createElementNS(ns, tag);
+      for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+      svg.append(e);
+    };
+    const stroke = { fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round" };
+    add("path", { ...stroke, d: "M1.5 12S5.5 5 12 5s10.5 7 10.5 7-4 7-10.5 7S1.5 12 1.5 12z" });
+    add("circle", { ...stroke, cx: "12", cy: "12", r: "3" });
+    if (!open) add("path", { ...stroke, d: "M3 3l18 18" });
+    return svg;
+  }
+
   /** The tab strip. Built once, then updated in place so a focused tab keeps focus. */
   function renderTabs() {
     const host = $("layer-tabs");
-    if (host.children.length !== 4) {
+    if (host.children.length !== 3) {
       host.replaceChildren();
-      for (let n = 0; n < 4; n++) {
+      for (let n = 1; n <= 3; n++) {
         const b = document.createElement("button");
         b.type = "button";
         b.id = `tab-${n}`;
@@ -578,21 +590,41 @@ function startApp() {
         b.append(Object.assign(document.createElement("span"), { className: "tab-name" }), Object.assign(document.createElement("span"), { className: "tab-count" }));
         b.addEventListener("click", () => selectTab(n));
         b.addEventListener("keydown", (ev) => {
-          const keys = { ArrowRight: (activeTab + 1) % 4, ArrowLeft: (activeTab + 3) % 4, Home: 0, End: 3 };
+          const keys = { ArrowRight: (activeTab % 3) + 1, ArrowLeft: ((activeTab + 1) % 3) + 1, Home: 1, End: 3 };
           if (!(ev.key in keys)) return;
           ev.preventDefault();
           selectTab(keys[ev.key], { focusTab: true });
         });
-        host.append(b);
+        // the eye shows or hides every layer in this group, right beside its tab (not inside it: a button can't hold a button)
+        const eye = document.createElement("button");
+        eye.type = "button";
+        eye.id = `eye-${n}`;
+        eye.className = "eye";
+        eye.addEventListener("click", () => {
+          const g = doc.groups[n - 1];
+          g.on = g.on === false;
+          renderGroupHead();
+          renderLayers();
+          update();
+        });
+        const item = document.createElement("div");
+        item.className = "tabitem";
+        item.append(b, eye);
+        host.append(item);
       }
     }
-    for (let n = 0; n < 4; n++) {
+    for (let n = 1; n <= 3; n++) {
       const b = $(`tab-${n}`);
       const count = doc.layers.filter((l) => tabOf(l) === n).length;
-      const hidden = n > 0 && doc.groups?.[n - 1]?.on === false;
+      const hidden = doc.groups?.[n - 1]?.on === false;
       b.querySelector(".tab-name").textContent = tabName(n);
       b.querySelector(".tab-count").textContent = String(count);
       b.classList.toggle("hiddengroup", hidden);
+      const eye = $(`eye-${n}`);
+      eye.replaceChildren(eyeIcon(!hidden));
+      eye.setAttribute("aria-pressed", String(!hidden));
+      eye.setAttribute("aria-label", `${tabName(n)}: ${hidden ? "hidden. Press to show its layers" : "shown. Press to hide its layers"}`);
+      eye.title = hidden ? "Show this group" : "Hide this group";
       b.setAttribute("aria-selected", String(n === activeTab));
       b.tabIndex = n === activeTab ? 0 : -1;
       b.setAttribute("aria-label", `${tabName(n)}, ${count} layer${count === 1 ? "" : "s"}${hidden ? ", hidden" : ""}`);
@@ -605,13 +637,6 @@ function startApp() {
   function renderGroupHead() {
     const host = $("group-head");
     host.replaceChildren();
-    if (activeTab === 0) {
-      const note = document.createElement("p");
-      note.className = "note";
-      note.textContent = "Layers with no group are always on. Put a layer in a group tab to show or hide it with that group.";
-      host.append(note);
-      return;
-    }
     const n = activeTab - 1;
     const g = doc.groups[n];
     const name = document.createElement("input");
@@ -1004,7 +1029,7 @@ function startApp() {
   }
   $("btn-add").addEventListener("click", () => {
     const l = newLayer($("add-kind").value);
-    if (activeTab > 0) l.group = activeTab; // a layer added in a group's tab belongs to that group
+    l.group = activeTab; // a layer added in a group's tab belongs to that group
     doc.layers.push(l);
     expanded.add(l.id);
     renderLayers([l.id, "toggle"]);
@@ -1077,7 +1102,7 @@ function startApp() {
     try {
       const r = addImportedLayer(doc, p.text, p.name);
       doc = r.doc;
-      activeTab = 0;
+      activeTab = 1;
       expanded.add(r.layerId);
       importMessages = [
         ...p.extra,

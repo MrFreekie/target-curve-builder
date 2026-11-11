@@ -42,12 +42,12 @@ export function newDoc() {
     },
     grid: { mode: "resample", fraction: 12, fmin: 20, fmax: 20000 },
     layers: [
-      { id: newId(), kind: "points", on: true, points: [[20, 0], [20000, 0]] },
-      { id: newId(), kind: "lfTilt", on: false, dbPerOct: 3, pivot: 1000, floor: null },
-      { id: newId(), kind: "fullTilt", on: false, dbPerOct: 1, pivot: 1000 },
-      { id: newId(), kind: "hfTilt", on: false, dbPerOct: 1.5, corner: 4000 },
-      { id: newId(), kind: "hpf", on: false, fc: 32, type: "LR", slope: 48 },
-      { id: newId(), kind: "lpf", on: false, fc: 16000, type: "LR", slope: 24 },
+      { id: newId(), kind: "points", on: true, group: 1, points: [[20, 0], [20000, 0]] },
+      { id: newId(), kind: "lfTilt", on: false, group: 1, dbPerOct: 3, pivot: 1000, floor: null },
+      { id: newId(), kind: "fullTilt", on: false, group: 1, dbPerOct: 1, pivot: 1000 },
+      { id: newId(), kind: "hfTilt", on: false, group: 1, dbPerOct: 1.5, corner: 4000 },
+      { id: newId(), kind: "hpf", on: false, group: 1, fc: 32, type: "LR", slope: 48 },
+      { id: newId(), kind: "lpf", on: false, group: 1, fc: 16000, type: "LR", slope: 24 },
     ],
     normalise: { on: false, at: 1000 },
     original: null,
@@ -66,7 +66,7 @@ export function defaultGroups() {
 
 /** A fresh layer of the given kind, switched on. */
 export function newLayer(kind) {
-  const base = { id: newId(), kind, on: true };
+  const base = { id: newId(), kind, on: true, group: 1 }; // every layer belongs to a group; new ones start in A
   switch (kind) {
     case "points": return { ...base, points: [[20, 0], [20000, 0]] };
     case "lfTilt": return { ...base, dbPerOct: 3, pivot: 1000, floor: null };
@@ -116,7 +116,7 @@ function loadLayer(l) {
   if (!isObj(l) || typeof l.kind !== "string" || !Object.hasOwn(LAYER_KINDS, l.kind)) throw new Error("Unknown layer type.");
   const out = { id: newId(), kind: l.kind, on: l.on !== false && l.on !== 0 };
   if (l.invert === true) out.invert = true; // any layer can be flipped upside down
-  if (Number.isInteger(l.group) && l.group >= 1 && l.group <= GROUP_COUNT) out.group = l.group; // see §4.8
+  out.group = Number.isInteger(l.group) && l.group >= 1 && l.group <= GROUP_COUNT ? l.group : 1; // see §4.8: no or unusable group means group A
   switch (l.kind) {
     case "points":
       out.points = loadPoints(l.points);
@@ -324,7 +324,7 @@ export function addImportedLayer(doc, text, fileName = "") {
     points = points.map(([f, g]) => [f, g - ref]);
   }
   const next = JSON.parse(JSON.stringify(doc));
-  const layer = { id: newId(), kind: "points", on: true, points };
+  const layer = { id: newId(), kind: "points", on: true, group: 1, points };
   const label = clean(fileName).replace(/	/g, " ").trim().slice(0, 100);
   if (label) layer.label = label;
   next.layers.push(layer);

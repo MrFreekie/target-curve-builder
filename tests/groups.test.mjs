@@ -16,15 +16,18 @@ function sample() {
   Object.assign(layer(d, "lfTilt"), { on: true, group: 1 });
   Object.assign(layer(d, "hpf"), { on: true, group: 2 });
   d.layers.push({ ...newLayer("bell"), group: 3 });
-  d.layers.push({ ...newLayer("gain"), db: 2 });
+  const loose = { ...newLayer("gain"), db: 2 };
+  delete loose.group; // a raw layer with no group is still tolerated by the maths, and is never hidden
+  d.layers.push(loose);
   return d;
 }
 
-test("a new document has three groups named A, B and C, all shown; layers start with no group", () => {
+test("a new document has three groups named A, B and C, all shown; layers start in group A", () => {
   const d = newDoc();
   assert.equal(GROUP_COUNT, 3);
   assert.deepEqual(d.groups, [{ name: "A", on: true }, { name: "B", on: true }, { name: "C", on: true }]);
-  assert.ok(d.layers.every((l) => !("group" in l)));
+  assert.ok(d.layers.every((l) => l.group === 1));
+  assert.equal(newLayer("bell").group, 1);
   assert.deepEqual(defaultGroups(), d.groups);
   assert.equal(isBlank(d), true);
 });
@@ -123,14 +126,14 @@ test("groups, their names and states, and each layer's group survive save and lo
   d.groups = [{ name: "Target", on: true }, { name: "Voicing", on: false }, { name: "Fix", on: true }];
   const back = loadDoc(JSON.parse(JSON.stringify(d)));
   assert.deepEqual(back.groups, d.groups);
-  assert.deepEqual(back.layers.map((l) => l.group), d.layers.map((l) => l.group));
+  assert.deepEqual(back.layers.map((l) => l.group), d.layers.map((l) => l.group ?? 1));
   assert.deepEqual(evaluate(back), evaluate(d));
 });
 
 test("loading: old documents get default groups; bad names and numbers are cleaned or dropped", () => {
   const old = loadDoc({ version: 1, layers: [{ kind: "gain", on: true, db: 3 }] });
   assert.deepEqual(old.groups, defaultGroups());
-  assert.equal("group" in old.layers[0], false);
+  assert.equal(old.layers[0].group, 1, "a layer with no group loads into group A");
   const odd = loadDoc({
     version: 1,
     groups: [{ name: "x\r\ny\tz".repeat(10), on: false }, { name: "", on: "no" }, "junk", { name: 5 }],
@@ -141,7 +144,7 @@ test("loading: old documents get default groups; bad names and numbers are clean
   assert.equal(odd.groups[0].on, false);
   assert.deepEqual(odd.groups[1], { name: "B", on: true });
   assert.deepEqual(odd.groups[2], { name: "C", on: true });
-  assert.deepEqual(odd.layers.map((l) => l.group), [undefined, 1, 3, undefined, undefined, undefined, undefined, undefined, undefined]);
+  assert.deepEqual(odd.layers.map((l) => l.group), [1, 1, 3, 1, 1, 1, 1, 1, 1]);
   assert.equal(loadDoc({ version: 1, layers: [], groups: [{ name: "__proto__" }, { name: "constructor" }] }).groups[0].name, "__proto__");
 });
 
@@ -156,7 +159,7 @@ test("renaming or hiding a group makes the document no longer blank; adding a fi
   base.groups[0].on = false;
   const { doc } = addImportedLayer(base, "Line:\t3\r\nType:\tTF\r\n\r\n100\t0\r\n200\t3\r\n", "f.crv");
   assert.deepEqual(doc.groups, base.groups);
-  assert.equal("group" in doc.layers.at(-1), false, "an added layer starts with no group");
+  assert.equal(doc.layers.at(-1).group, 1, "an added layer starts in group A");
 });
 
 test("only groups 1 to 3 can hide a layer, even when a raw document has a longer groups list", () => {
