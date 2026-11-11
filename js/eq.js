@@ -190,32 +190,6 @@ export function weightingDb(curve, f) {
 
 // ---------------------------------------------------------------- Shapes
 /**
- * The outline of a dog, side on, facing right, as heights from 0 to 1 against u from -1 (tail) to +1 (nose).
- * A response curve has one value per frequency, so this is the skyline of the dog: tail, back, neck, head with a
- * pointed ear, forehead, stop, snout and nose.
- * @type {ReadonlyArray<readonly [number, number]>}
- */
-export const DOG_OUTLINE = [
-  [-1.0, 0.4], [-0.94, 0.55], [-0.88, 0.3], [-0.8, 0.26], [-0.55, 0.3], [-0.3, 0.36], [-0.12, 0.4],
-  [0.0, 0.5], [0.08, 0.66], [0.14, 0.95], [0.22, 0.68], [0.3, 0.72], [0.44, 0.64], [0.56, 0.58],
-  [0.74, 0.55], [0.88, 0.5], [0.96, 0.42], [1.0, 0.3],
-];
-
-/** Straight-line interpolation through the dog's outline. */
-function dogHeight(u) {
-  const pts = DOG_OUTLINE;
-  if (u <= pts[0][0]) return pts[0][1];
-  for (let i = 1; i < pts.length; i++) {
-    if (u <= pts[i][0]) {
-      const [u0, g0] = pts[i - 1];
-      const [u1, g1] = pts[i];
-      return g0 + ((g1 - g0) * (u - u0)) / (u1 - u0);
-    }
-  }
-  return pts[pts.length - 1][1];
-}
-
-/**
  * Fun shapes drawn on the graph against log frequency: u = log2(f/fc) / (width/2), so the shape spans
  * u from -1 to +1 (the full base width, in octaves) and is 0 outside. `db` is the height (negative for a dip).
  * t = (u + 1) / 2 runs from 0 at the left edge to 1 at the right edge. `count` is the number of cycles for the
@@ -233,7 +207,6 @@ export const SHAPES = {
   rampDown: { label: "Ramp down (sawtooth)", countLabel: null, value: (u) => (1 - u) / 2 },
   sine: { label: "Sine wave", countLabel: "Cycles", value: (u, flat, count) => Math.sin(Math.PI * count * (u + 1)) },
   square: { label: "Square wave", countLabel: "Cycles", value: (u, flat, count) => (Math.sin(Math.PI * count * (u + 1)) >= 0 ? 1 : -1) },
-  dog: { label: "Dog (side profile)", countLabel: null, value: (u) => dogHeight(u) },
   stairs: { label: "Staircase (rising)", countLabel: "Steps", value: (u, flat, count) => {
     const n = Math.max(2, Math.round(count));
     return Math.min(n - 1, Math.floor(((u + 1) / 2) * n)) / (n - 1);

@@ -1,7 +1,6 @@
 // Pure curve maths: frequency grids, octave positions, evaluation, rounding.
 // No DOM access, no global state. See docs/SPEC.md §3, §4.6, §4.7.
 import { layerDb } from "./layers.js";
-import { DOG_OUTLINE } from "./eq.js";
 
 /** Nominal ISO 1/3-octave labels, 20 Hz to 20 kHz. */
 export const NOMINAL_3 = [20, 25, 31.5, 40, 50, 63, 80, 100, 125, 160, 200, 250, 315, 400, 500,
@@ -139,13 +138,6 @@ export function keyFrequencies(layers) {
         const highEdge = (f) => Math.floor(f * 1e6) / 1e6;
         out.push(lowEdge(l.fc * 2 ** -half), highEdge(l.fc * 2 ** half));
         if (spans.length > 1) out.push(l.fc * 2 ** -spans[1], l.fc * 2 ** spans[1]);
-        // the outline of the dog is a polyline: every vertex is a corner
-        if (l.shape === "dog") {
-          for (const [u] of DOG_OUTLINE) {
-            const f = l.fc * 2 ** (u * half);
-            out.push(Math.abs(u) === 1 ? (u < 0 ? lowEdge(f) : highEdge(f)) : f);
-          }
-        }
         // the jumps of the square wave and the staircase are corners too
         const n = Number(l.count ?? 3);
         const jumps = l.shape === "square" ? Math.ceil(2 * n) : l.shape === "stairs" ? Math.max(2, Math.round(n)) : 0;

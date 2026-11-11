@@ -204,7 +204,7 @@ test("fuzzing saved documents: loading never throws a TypeError, and what loads 
     if (value === undefined) delete o[path.at(-1)]; else o[path.at(-1)] = value;
   };
   const template = JSON.parse(JSON.stringify(newDoc()));
-  template.layers.push({ kind: "bell", on: true, fc: 1000, q: 1, db: 3 }, { kind: "shape", on: true, shape: "dog", fc: 1000, width: 2, db: 6, flat: 0.5, count: 3 },
+  template.layers.push({ kind: "bell", on: true, fc: 1000, q: 1, db: 3 }, { kind: "shape", on: true, shape: "pyramid", fc: 1000, width: 2, db: 6, flat: 0.5, count: 3 },
     { kind: "mesa", on: true, fLow: 80, fHigh: 400, wLow: 1, wHigh: 2, db: 6 }, { kind: "weighting", on: true, curve: "A" },
     { kind: "hiShelf", on: true, fc: 8000, type: "BW", slope: 12, db: -3 }, { kind: "hpf", on: true, fc: 50, type: "CH1", slope: 24 });
   let loaded = 0;

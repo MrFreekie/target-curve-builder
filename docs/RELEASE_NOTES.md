@@ -2,7 +2,6 @@
 
 ## Unreleased
 - Layers are now organised in tabs (Ungrouped, then the three groups), each with its own Add layer control; the group name and Shown/Hidden button sit at the top of its tab. The left bar is wider, "Random colour" is shorter, the suggested-name button sits next to the Name box, and the Buy me a beer link moved to the top bar.
-- A dog shape in the Shape layer (a side-profile skyline with ear, snout and tail), and a built-in "Dog" preset. Use Breakpoints only to export it with about 20 points.
 - Mesa-style asymmetric filter layer: a bump or dip with independent slopes on its lower and upper sides, made from two raised-cosine shelf steps as the Lake Mesa EQ is described. Our own construction, not Lake's published algorithm (SPEC §4.4h).
 - Layer groups: three renamable groups (A, B, C) with independent Shown/Hidden buttons above the layer list, and a Group choice on every layer. A hidden group's layers are left out of the plot, the table, the ghosts and the export. See SPEC §4.8.
 - Import can now add as well as replace: when a curve is already open, importing a `.crv` asks "Replace the current curve" or "Add as a layer". Adding keeps your curve and adds the file's points as a new Points layer, named after the file, that sums with the other layers (a spectrum file is shifted to 0 dB at 1 kHz first). A blank new document still just takes the file. All of it can be undone.
