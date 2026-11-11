@@ -111,6 +111,16 @@
   </footer>
   <input type="file" id="file-import" accept=".crv,.txt,text/plain" hidden>
   <input type="file" id="file-preset" accept=".json,application/json" hidden>
+  <dialog id="dlg-import" aria-labelledby="h-import">
+    <h2 id="h-import">Import <span id="imp-name"></span></h2>
+    <p>You already have a curve open. What should the file do?</p>
+    <div class="actions">
+      <button type="button" id="imp-replace" class="primary">Replace the current curve</button>
+      <button type="button" id="imp-add">Add as a layer</button>
+      <button type="button" id="imp-cancel">Cancel</button>
+    </div>
+    <p class="note"><strong>Replace</strong> opens the file as the curve, with its own name, colour and header. <strong>Add as a layer</strong> keeps your curve and adds the file's points as a new Points layer that sums with the other layers. Both can be undone.</p>
+  </dialog>
   <dialog id="dlg-presets" aria-labelledby="h-presets">
     <div class="row-head"><h2 id="h-presets">Presets</h2><button type="button" id="btn-presets-close">Close</button></div>
     <div id="presets-body"></div>

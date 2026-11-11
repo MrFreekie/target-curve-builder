@@ -4,7 +4,7 @@ import { FILTERS } from "./layers.js";
 import { getAdapter, writableAdapters } from "./formats/index.js";
 import { fmt6, pickerToSmaart, smaartToPicker, crvFileName, exportFileName } from "./formats/smaart.js";
 import { createPlot } from "./plot.js";
-import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf, resetToImport } from "./doc.js";
+import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf, resetToImport, isBlank, addImportedLayer } from "./doc.js";
 import { WEIGHTINGS, SHAPES } from "./eq.js";
 import * as presets from "./presets.js";
 import { suggestName } from "./naming.js";
@@ -272,7 +272,7 @@ function startApp() {
     switch (l.kind) {
       case "weighting": return WEIGHTINGS[l.curve]?.label ?? "Weighting";
       case "shape": return `${SHAPES[l.shape]?.label ?? "Shape"} ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, ${l.width} oct wide`;
-      case "points": return `Points (${l.points.length})`;
+      case "points": return `Points (${l.points.length})${l.label ? ` – ${l.label}` : ""}`;
       case "lfTilt": return `LF tilt ${l.dbPerOct} dB/oct`;
       case "hfTilt": return `HF tilt ${l.dbPerOct} dB/oct`;
       case "fullTilt": return `Full tilt ${l.dbPerOct} dB/oct`;
@@ -899,26 +899,66 @@ function startApp() {
         setDoc(presets.presetFromJson(await file.text()));
         return;
       }
-      const { doc: imported, warnings } = docFromImport(await file.text(), file.name);
-      importMessages = [...extra, ...warnings];
-      setDoc(imported);
+      const text = await file.text();
+      const { doc: imported, warnings } = docFromImport(text, file.name); // also checks the file is usable
+      if (isBlank(doc)) {
+        importMessages = [...extra, ...warnings];
+        setDoc(imported);
+      } else {
+        // a curve is already open: ask whether the file replaces it or is added as a layer
+        pendingImport = { text, name: file.name, extra, imported, warnings };
+        $("imp-name").textContent = file.name;
+        impDlg.showModal();
+      }
     } catch (e) {
       importMessages = [`Couldn't import ${file.name}: ${e.message}`];
       noticeSig = "";
       renderNotice();
     }
   }
+  let pendingImport = null;
+  const impDlg = $("dlg-import");
+  $("imp-replace").addEventListener("click", () => {
+    const p = pendingImport;
+    impDlg.close();
+    if (!p) return;
+    importMessages = [...p.extra, ...p.warnings];
+    setDoc(p.imported);
+  });
+  $("imp-add").addEventListener("click", () => {
+    const p = pendingImport;
+    impDlg.close();
+    if (!p) return;
+    try {
+      const r = addImportedLayer(doc, p.text, p.name);
+      doc = r.doc;
+      expanded.add(r.layerId);
+      importMessages = [
+        ...p.extra,
+        `Added ${p.name} as a new Points layer (${doc.layers.at(-1).points.length} points).${r.shifted ? " It is a spectrum curve, so it was shifted to 0 dB at 1 kHz." : ""}`,
+        ...r.warnings,
+      ];
+      noticeSig = "";
+      refreshAll();
+    } catch (e) {
+      importMessages = [`Couldn't add ${p.name}: ${e.message}`];
+      noticeSig = "";
+      renderNotice();
+    }
+  });
+  $("imp-cancel").addEventListener("click", () => impDlg.close());
+  impDlg.addEventListener("close", () => { pendingImport = null; });
   $("btn-import").addEventListener("click", () => $("file-import").click());
   $("file-import").addEventListener("change", () => { importFile($("file-import").files[0]); $("file-import").value = ""; });
   const hasFiles = (ev) => ev.dataTransfer && [...ev.dataTransfer.types].includes("Files");
-  document.addEventListener("dragover", (ev) => { if (hasFiles(ev) && !dlg.open) { ev.preventDefault(); document.body.classList.add("dropping"); } });
+  document.addEventListener("dragover", (ev) => { if (hasFiles(ev) && !dlg.open && !impDlg.open) { ev.preventDefault(); document.body.classList.add("dropping"); } });
   document.addEventListener("dragleave", (ev) => { if (!ev.relatedTarget) document.body.classList.remove("dropping"); });
   document.addEventListener("dragend", () => document.body.classList.remove("dropping"));
   document.addEventListener("drop", (ev) => {
     if (!hasFiles(ev)) return;
     ev.preventDefault();
     document.body.classList.remove("dropping");
-    if (dlg.open) return;
+    if (dlg.open || impDlg.open) return;
     const files = ev.dataTransfer.files;
     importFile(files[0], files.length > 1 ? ["Several files were dropped: only the first was opened."] : []);
   });

@@ -106,7 +106,11 @@ function loadLayer(l) {
   const out = { id: newId(), kind: l.kind, on: l.on !== false && l.on !== 0 };
   if (l.invert === true) out.invert = true; // any layer can be flipped upside down
   switch (l.kind) {
-    case "points": out.points = loadPoints(l.points); break;
+    case "points":
+      out.points = loadPoints(l.points);
+      // an optional name for the layer, such as the file it was added from
+      if (typeof l.label === "string" && l.label.trim()) out.label = clean(l.label).replace(/	/g, " ").trim().slice(0, 100);
+      break;
     case "lfTilt":
       out.dbPerOct = num(l.dbPerOct, "tilt slope");
       out.pivot = num(l.pivot, "pivot", { positive: true });
@@ -260,6 +264,45 @@ export function docFromImport(text, fileName = "") {
   doc.original = r.points.map((p) => [...p]);
   doc.originalProps = JSON.parse(JSON.stringify(doc.props)); // for "Reset to imported"
   return { doc, warnings: r.warnings };
+}
+
+/**
+ * Is this document still a blank "new" document: nothing imported, edited or switched on?
+ * Used to decide whether importing a file can simply replace it without asking.
+ * @param {object} doc
+ * @returns {boolean}
+ */
+export function isBlank(doc) {
+  const strip = (d) => JSON.stringify({ ...d, layers: (d.layers ?? []).map(({ id, ...rest }) => rest) });
+  return strip(doc) === strip(newDoc());
+}
+
+/**
+ * Add the points of a .crv file to a document as a new Points layer, keeping everything else (name, colour,
+ * grid, other layers). A spectrum file holds absolute levels, so it is shifted to 0 dB at 1 kHz first.
+ * @param {object} doc The current document (not changed).
+ * @param {string} text The file text.
+ * @param {string} [fileName] Shown as the layer's label.
+ * @returns {{doc: object, layerId: string, warnings: string[], shifted: boolean}}
+ */
+export function addImportedLayer(doc, text, fileName = "") {
+  const found = detectFormat(text);
+  if (!found) throw new Error("This doesn't look like a Smaart .crv file.");
+  const r = found.adapter.read(text);
+  if (r.points.length < 2) throw new Error("The file has fewer than 2 readable data rows.");
+  if (r.points.length > MAX_POINTS) throw new Error(`The file has more than ${MAX_POINTS} points.`);
+  let points = r.points.map((p) => [...p]);
+  const shifted = found.adapter.id === "smaart-spectrum";
+  if (shifted) {
+    const ref = interpPoints(1000, points);
+    points = points.map(([f, g]) => [f, g - ref]);
+  }
+  const next = JSON.parse(JSON.stringify(doc));
+  const layer = { id: newId(), kind: "points", on: true, points };
+  const label = clean(fileName).replace(/	/g, " ").trim().slice(0, 100);
+  if (label) layer.label = label;
+  next.layers.push(layer);
+  return { doc: next, layerId: layer.id, warnings: r.warnings, shifted };
 }
 
 /**

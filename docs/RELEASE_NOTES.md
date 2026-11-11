@@ -1,6 +1,7 @@
 # Release notes
 
 ## Unreleased
+- Import can now add as well as replace: when a curve is already open, importing a `.crv` asks "Replace the current curve" or "Add as a layer". Adding keeps your curve and adds the file's points as a new Points layer, named after the file, that sums with the other layers (a spectrum file is shifted to 0 dB at 1 kHz first). A blank new document still just takes the file. All of it can be undone.
 - Note names and wavelength options above the plot: the hover readout and the points table can show the nearest musical note (A4 = 440 Hz, with cents) and the wavelength at 343 m/s. Display only, never exported.
 - Layer ghosts: a global toggle above the plot draws each enabled layer's own contribution as a faint coloured line behind the curve, with a matching colour stripe on its row in the layer list. A view setting only; it is not exported.
 - Low trim and high trim in the Output grid section: crop the preview and the exported points to a frequency range (SPEC §3.5). Empty by default, so imported files still export unchanged. The plot axis stays at the full range; only the curve is cropped.
