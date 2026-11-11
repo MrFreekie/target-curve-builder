@@ -11,6 +11,8 @@ import { fileURLToPath } from "node:url";
 import assert from "node:assert/strict";
 
 const root = fileURLToPath(new URL("..", import.meta.url));
+// never hang a build: give up (and fail) after three minutes
+setTimeout(() => { console.log("FAIL the browser tests took longer than 3 minutes"); process.exit(1); }, 180_000).unref();
 const TYPES = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".svg": "image/svg+xml", ".json": "application/json", ".webmanifest": "application/manifest+json", ".jpg": "image/jpeg", ".txt": "text/plain", ".xml": "application/xml", ".md": "text/markdown" };
 
 function findBrowser() {
@@ -207,6 +209,15 @@ try {
       return { readout: [...svg.querySelectorAll("text")].map(t => t.textContent).find(t => /Hz.*dB.*\\b(m|cm|mm)$/.test(t)) ?? null, cols: [...document.querySelectorAll("#points-table th")].map(t => t.textContent) };`);
     assert.ok(r.readout, "a readout with a wavelength");
     assert.deepEqual(r.cols, ["Hz", "dB"]);
+  });
+
+  await test("About opens as a pop-out and closes again", async () => {
+    await open("/?fresh");
+    const r = await run(`const d = document.getElementById("dlg-about"); const before = d.open;
+      document.getElementById("btn-about").click(); const opened = d.open; const text = d.textContent.includes("Smaart target curve");
+      document.getElementById("btn-about-close").click();
+      return { before, opened, text, after: d.open };`);
+    assert.deepEqual(r, { before: false, opened: true, text: true, after: false });
   });
 
   await test("works offline once loaded (service worker)", async () => {

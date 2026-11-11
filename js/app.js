@@ -1144,6 +1144,11 @@ function startApp() {
   }
   $("btn-presets").addEventListener("click", () => { renderPresets(); dlg.showModal(); });
   $("btn-presets-close").addEventListener("click", () => dlg.close());
+  // About: the explanation lives in a pop-out so the editor keeps the whole page
+  const aboutDlg = $("dlg-about");
+  $("btn-about").addEventListener("click", () => aboutDlg.showModal());
+  $("btn-about-close").addEventListener("click", () => aboutDlg.close());
+  aboutDlg.addEventListener("click", (ev) => { if (ev.target === aboutDlg) aboutDlg.close(); }); // a click on the backdrop
   $("file-preset").addEventListener("change", async () => {
     const f = $("file-preset").files[0];
     $("file-preset").value = "";

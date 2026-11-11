@@ -37,6 +37,7 @@
       <button type="button" id="btn-redo" disabled title="Redo (Shift+Ctrl+Z)">Redo</button>
       <button type="button" id="btn-import">Import .crv</button>
       <button type="button" id="btn-presets">Presets</button>
+      <button type="button" id="btn-about">About</button>
       <button type="button" id="btn-theme">Theme: Auto</button>
       <button type="button" id="btn-new">New</button>
       <label for="export-format" class="sr-only">Export format</label>
@@ -154,11 +155,13 @@
       </section>
     </main>
   </div>
-  <footer class="about" itemscope itemtype="https://schema.org/WebApplication">
-    <meta itemprop="applicationCategory" content="MultimediaApplication">
+  <dialog id="dlg-about" class="about" aria-labelledby="h-about">
+    <div class="row-head"><h2 id="h-about">About Target Curve Builder</h2><button type="button" id="btn-about-close" autofocus>Close</button></div>
+    <div itemscope itemtype="https://schema.org/WebApplication">
+      <meta itemprop="name" content="Target Curve Builder">
+      <meta itemprop="applicationCategory" content="MultimediaApplication">
     <meta itemprop="operatingSystem" content="Any, in a web browser">
     <meta itemprop="isAccessibleForFree" content="true">
-    <h2 itemprop="name">About Target Curve Builder</h2>
     <p itemprop="description">Target Curve Builder is a free tool for building, importing and editing the target curves that Smaart uses in its transfer function view. Make a house curve for a PA or sound system, then export it as a Smaart <code>.crv</code> file in one click. It runs entirely in your browser: nothing is uploaded, there is no account, and it works offline once loaded.</p>
     <h3>How it works</h3>
     <ol>
@@ -173,7 +176,8 @@
     <p>Yes. It can also export plain text (Hz and dB) and a Smaart ASCII trace, and import a measurement as a reference trace.</p>
     <h4>Is it free to use?</h4>
     <p>Yes, for any non-commercial purpose, under the <a href="LICENSE.md">PolyForm Noncommercial licence</a>. The source is on <a href="https://github.com/MrFreekie/target-curve-builder">GitHub</a>.</p>
-  </footer>
+    </div>
+  </dialog>
   <input type="file" id="file-import" accept=".crv,.txt,text/plain" hidden>
   <input type="file" id="file-trace" accept=".crv,.txt,.csv,.dat,text/plain" hidden>
   <input type="file" id="file-preset" accept=".json,application/json" hidden>
