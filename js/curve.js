@@ -80,20 +80,98 @@ export function totalDb(f, layers) {
   return sum;
 }
 
+/** Default maximum error (dB) for the "simplified" grid; the allowed range is 0.001 to 12. */
+export const DEFAULT_EPSILON = 0.1;
+
+/**
+ * Frequencies where an enabled layer has a corner: point frequencies, tilt pivots, corners and floors,
+ * and filter corners.
+ * @param {object[]} layers
+ * @returns {number[]}
+ */
+export function keyFrequencies(layers) {
+  const out = [];
+  for (const l of layers) {
+    if (l.on !== undefined && !l.on) continue;
+    if (l.kind === "points") for (const p of l.points) out.push(p[0]);
+    else for (const k of ["pivot", "corner", "floor", "fc"]) if (l[k] != null) out.push(l[k]);
+  }
+  return out.map(Number).filter((f) => Number.isFinite(f) && f > 0);
+}
+
+/**
+ * Keep only the points needed so that straight lines between them (against octave position) stay within
+ * `epsilon` dB of the full curve. The first and last points are always kept (Ramer-Douglas-Peucker).
+ * @param {number[][]} points [[hz, db], ...] in ascending frequency
+ * @param {number} epsilon Maximum vertical error in dB.
+ * @returns {number[][]}
+ */
+export function simplify(points, epsilon) {
+  const n = points.length;
+  if (n <= 2) return points.map((p) => [...p]);
+  const x = points.map(([f]) => pos(f));
+  const keep = new Uint8Array(n);
+  keep[0] = keep[n - 1] = 1;
+  const stack = [[0, n - 1]];
+  while (stack.length) {
+    const [a, b] = stack.pop();
+    let worst = -1;
+    let at = -1;
+    for (let i = a + 1; i < b; i++) {
+      const t = x[b] === x[a] ? 0 : (x[i] - x[a]) / (x[b] - x[a]);
+      const err = Math.abs(points[i][1] - (points[a][1] + t * (points[b][1] - points[a][1])));
+      if (err > worst) { worst = err; at = i; }
+    }
+    if (at >= 0 && worst > epsilon) {
+      keep[at] = 1;
+      stack.push([a, at], [at, b]);
+    }
+  }
+  return points.filter((_, i) => keep[i]).map((p) => [...p]);
+}
+
+/**
+ * Dense frequency list used before simplifying: a 1/48-octave grid plus fmin, fmax and every layer corner.
+ * @param {{grid?: object, layers: object[]}} doc
+ * @returns {number[]}
+ */
+export function denseGrid(doc) {
+  const g = doc.grid ?? {};
+  const fmin = Number(g.fmin ?? 20);
+  const fmax = Number(g.fmax ?? 20000);
+  // Corners, deduplicated only when they are exactly the same after rounding to 6 decimals.
+  const keys = [...new Set([fmin, fmax, ...keyFrequencies(doc.layers).filter((f) => f >= fmin && f <= fmax)].map(round6))];
+  const keyPos = keys.map(pos);
+  // 1/48-octave grid from the exact (unrounded) frequencies. A grid point is dropped when a corner sits at
+  // the same octave position (62.5 Hz and 63 Hz are both -4 octaves) or within 1e-6 relative of it, so the
+  // corner keeps the frequency the user typed. The comparison is in grid-index space so that 6-decimal
+  // rounding of the grid frequency can't make a twin look different.
+  const grid = [];
+  for (let k = Math.floor(48 * Math.log2(fmin / 1000)) - 1; ; k++) {
+    const f = 1000 * 2 ** (k / 48);
+    if (f > fmax * (1 + 1e-9)) break;
+    if (f < fmin * (1 - 1e-9)) continue;
+    const rounded = round6(f);
+    if (keys.some((key, i) => Math.abs(48 * keyPos[i] - k) < 1e-6 || Math.abs(key - f) <= 1e-6 * f)) continue;
+    grid.push(rounded);
+  }
+  return [...grid, ...keys].sort((p, q) => p - q).filter((f, i, all) => i === 0 || f !== all[i - 1]);
+}
+
 /**
  * Evaluate a document to [hz, db] pairs, rounded to 6 decimals.
- * With no `freqs`: grid.mode "original" uses the imported frequencies in order,
- * otherwise the resample grid is used.
+ * With no `freqs`: grid.mode "original" uses the imported frequencies in order, "simplified" keeps only
+ * the points needed to stay within grid.epsilon dB (default 0.1) of the curve, otherwise the resample grid is used.
  * @param {{grid?: object, layers: object[], normalise?: {on: boolean, at: number}, original?: number[][]|null}} doc
  * @param {number[]} [freqs]
  * @returns {number[][]}
  */
 export function evaluate(doc, freqs) {
   const grid = doc.grid ?? {};
+  const simplified = !freqs && grid.mode === "simplified";
   if (!freqs) {
-    freqs = grid.mode === "original" && doc.original
-      ? doc.original.map((p) => p[0])
-      : makeGrid(grid);
+    if (simplified) freqs = denseGrid(doc);
+    else freqs = grid.mode === "original" && doc.original ? doc.original.map((p) => p[0]) : makeGrid(grid);
   }
   const layers = doc.layers;
   let out = freqs.map((f) => [f, totalDb(f, layers)]);
@@ -101,6 +179,12 @@ export function evaluate(doc, freqs) {
   if (nm && nm.on) {
     const ref = totalDb(nm.at ?? 1000, layers);
     out = out.map(([f, g]) => [f, g - ref]);
+  }
+  if (simplified) {
+    const eps = Number(grid.epsilon);
+    const limit = eps >= 0.001 && eps <= 12 ? eps : DEFAULT_EPSILON;
+    // Search with 1 µdB to spare so that rounding the output to 6 decimals can't push it past the limit.
+    out = simplify(out, limit - 1e-6);
   }
   return out.map(([f, g]) => [f, round6(g)]);
 }

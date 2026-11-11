@@ -1,6 +1,9 @@
 # Release notes
 
 ## Unreleased
+- Y offset: slide the plot's visible dB window up or down by up to ±20 dB (next to the zoom). A view setting only.
+- Sub boost ("haystack") layer: boost or cut by ± dB everything below a low-pass corner, with Butterworth or Linkwitz-Riley slope. See SPEC §4.4a.
+- "Breakpoints only" output grid: exports just the points needed to stay within a chosen dB error, because Smaart draws straight lines between points. See SPEC §3.4.
 - Name suggestion under the Name field, built from the enabled layers in the style of the reference files (for example `Tilt_3dBoct_1000Hz_HPF32_LR48`). It updates as you edit, and a click applies it.
 - Export as a Smaart ASCII trace (`.txt`), chosen next to the Export button. Layout copied from a Smaart ASCII export; phase is written as 0 and coherence as 1.
 - A text file with no header is no longer mistaken for a spectrum `.crv` on import.

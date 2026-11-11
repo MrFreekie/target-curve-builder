@@ -4,9 +4,10 @@ import { FILTERS } from "./layers.js";
 import { getAdapter, writableAdapters } from "./formats/index.js";
 import { fmt6, pickerToSmaart, smaartToPicker, crvFileName, exportFileName } from "./formats/smaart.js";
 import { createPlot } from "./plot.js";
-import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf } from "./doc.js";
+import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf, resetToImport } from "./doc.js";
 import * as presets from "./presets.js";
 import { suggestName } from "./naming.js";
+import { randomContrastingColour } from "./colour.js";
 
 export { newDoc, newLayer };
 
@@ -25,6 +26,9 @@ function layerIssues(doc) {
     for (const key of ["pivot", "corner", "floor"]) {
       if (l[key] !== undefined && l[key] !== null && !(l[key] > 0)) bad(`${name}: ${key} must be greater than 0 Hz.`);
     }
+  }
+  if (doc.grid.mode === "simplified" && doc.grid.epsilon !== undefined && !(doc.grid.epsilon >= 0.001 && doc.grid.epsilon <= 12)) {
+    bad("Breakpoints only: max error must be between 0.001 and 12 dB.");
   }
   if (doc.normalise.on && !(doc.normalise.at > 0)) bad("Normalise: frequency must be greater than 0 Hz.");
   if (Number(doc.props.tolerance) < 0) bad("Tolerance can't be negative.");
@@ -252,6 +256,7 @@ function startApp() {
       case "fullTilt": return `Full tilt ${l.dbPerOct} dB/oct`;
       case "hpf": return `HPF ${l.fc} Hz ${l.type}${l.slope}`;
       case "lpf": return `LPF ${l.fc} Hz ${l.type}${l.slope}`;
+      case "subBoost": return `Sub boost ${l.db > 0 ? "+" : ""}${l.db} dB below ${l.fc} Hz ${l.type}${l.slope}`;
       default: return `Gain ${l.db} dB`;
     }
   }
@@ -346,7 +351,8 @@ function startApp() {
         break;
       case "gain": body.append(numField("Level (dB)", l.db, set("db"))); break;
       default: {
-        body.append(numField("Corner frequency (Hz)", l.fc, set("fc")));
+        if (l.kind === "subBoost") body.append(numField("Boost (± dB)", l.db, set("db")));
+        body.append(numField(l.kind === "subBoost" ? "Low-pass corner (Hz)" : "Corner frequency (Hz)", l.fc, set("fc")));
         const slopeHost = document.createElement("div");
         const fillSlope = () => {
           slopeHost.replaceChildren(selectField("Slope (dB/oct)",
@@ -439,12 +445,13 @@ function startApp() {
     $("p-tol").value = String(p.tolerance);
     $("p-usetol").checked = !!p.useTolerance;
     $("p-offset").value = p.offset === null ? "" : String(p.offset);
+    $("g-eps").value = String(doc.grid.epsilon ?? 0.1);
     $("n-on").checked = doc.normalise.on;
     $("n-at").value = String(doc.normalise.at);
     renderGridModes();
   }
 
-  const GRID_CHOICES = [["3", "1/3 octave"], ["1", "1/1 octave"], ["6", "1/6 octave"], ["12", "1/12 octave"], ["24", "1/24 octave"], ["original", "Keep original"]];
+  const GRID_CHOICES = [["3", "1/3 octave"], ["1", "1/1 octave"], ["6", "1/6 octave"], ["12", "1/12 octave"], ["24", "1/24 octave"], ["original", "Keep original"], ["simplified", "Breakpoints only"]];
   function renderGridModes() {
     const host = $("grid-modes");
     host.querySelectorAll("label").forEach((n) => n.remove());
@@ -455,9 +462,11 @@ function startApp() {
       r.name = "grid";
       r.value = value;
       r.disabled = value === "original" && !doc.original;
-      r.checked = value === "original" ? doc.grid.mode === "original" : doc.grid.mode !== "original" && String(doc.grid.fraction) === value;
+      r.checked = value === "original" || value === "simplified"
+        ? doc.grid.mode === value
+        : doc.grid.mode !== "original" && doc.grid.mode !== "simplified" && String(doc.grid.fraction) === value;
       r.addEventListener("change", () => {
-        if (value === "original") doc.grid.mode = "original";
+        if (value === "original" || value === "simplified") doc.grid.mode = value;
         else { doc.grid.mode = "resample"; doc.grid.fraction = Number(value); }
         update();
       });
@@ -487,6 +496,42 @@ function startApp() {
   $("zoom-auto").addEventListener("change", () => setZoom($("zoom-auto").checked ? null : Number($("zoom").value)));
   $("zoom").addEventListener("input", () => setZoom(Number($("zoom").value)));
   applyZoomUi();
+
+  // ---- plot Y offset: slides the visible dB window by -20 to +20 dB (also a view setting)
+  let yOffset = 0;
+  try {
+    const saved = Number(localStorage.getItem("tcb-yoff"));
+    if (Number.isFinite(saved) && Math.abs(saved) <= 20) yOffset = Math.round(saved);
+  } catch { /* storage unavailable */ }
+  const applyYoffUi = () => {
+    $("yoff").value = String(yOffset);
+    $("yoff-val").textContent = `${yOffset > 0 ? "+" : yOffset < 0 ? "−" : ""}${Math.abs(yOffset)} dB`;
+    $("yoff-reset").disabled = yOffset === 0;
+  };
+  const setYoff = (v) => {
+    yOffset = Math.max(-20, Math.min(20, Math.round(v)));
+    try { localStorage.setItem("tcb-yoff", String(yOffset)); } catch { /* storage unavailable */ }
+    applyYoffUi();
+    update();
+  };
+  $("yoff").addEventListener("input", () => setYoff(Number($("yoff").value)));
+  $("yoff-reset").addEventListener("click", () => setYoff(0));
+  applyYoffUi();
+
+  // ---- lines only: hide the point markers and drag handles on the plot (a view setting)
+  let linesOnly = false;
+  try { linesOnly = localStorage.getItem("tcb-lines") === "1"; } catch { /* storage unavailable */ }
+  const applyLinesUi = () => {
+    $("btn-lines").setAttribute("aria-pressed", String(linesOnly));
+    $("btn-lines").textContent = linesOnly ? "Show points" : "Hide points (lines only)";
+  };
+  $("btn-lines").addEventListener("click", () => {
+    linesOnly = !linesOnly;
+    try { localStorage.setItem("tcb-lines", linesOnly ? "1" : "0"); } catch { /* storage unavailable */ }
+    applyLinesUi();
+    update();
+  });
+  applyLinesUi();
 
   let noticeSig = "";
   function renderNotice() {
@@ -526,6 +571,8 @@ function startApp() {
   function update() {
     track();
     renderSuggestion();
+    $("eps-field").hidden = doc.grid.mode !== "simplified";
+    $("btn-reset-import").hidden = !doc.original;
     refreshTitles();
     renderNotice();
     undoUi();
@@ -533,7 +580,8 @@ function startApp() {
     let handles = [];
     const hl = pointsLayer();
     const hint = $("handle-hint");
-    if (!hl) hint.textContent = "Switch on a Points layer to drag points on the plot.";
+    if (linesOnly) hint.textContent = "Points are hidden (lines only). Press Show points to drag them.";
+    else if (!hl) hint.textContent = "Switch on a Points layer to drag points on the plot.";
     else if (hl.points.length > 200) hint.textContent = "This Points layer has more than 200 points, so drag handles are hidden. Edit values in the layer's table.";
     else hint.textContent = "Drag a point to change its level. Hold Shift to move its frequency too. With a point focused: Up/Down nudge, Left/Right switch point.";
     if (hl && hl.points.length && hl.points.length <= 200) {
@@ -542,13 +590,14 @@ function startApp() {
       } catch { handles = []; }
     }
     plot.render({
-      handles, wide: doc.props.format === "smaart-spectrum", yRange: doc.props.format === "smaart-spectrum" ? null : zoom,
+      handles, wide: doc.props.format === "smaart-spectrum", yRange: doc.props.format === "smaart-spectrum" ? null : zoom, yOffset, hidePoints: linesOnly,
       points, original: doc.original, color: doc.props.color, line: Number(doc.props.line) || 2,
       tolerance: Number(doc.props.tolerance) || 0, useTolerance: !!doc.props.useTolerance, show: !!doc.props.show,
       description: points.length
         ? `Target curve ${doc.props.name}, ${points.length} points from ${fmt6(points[0][0])} Hz to ${fmt6(points.at(-1)[0])} Hz. The same values are in the table below.`
         : "No curve to show.",
     });
+    $("h-table").textContent = `Exported points (${points.length})`;
     const tbody = $("points-table").tBodies[0];
     const rows = document.createDocumentFragment();
     for (const [f, g] of points) {
@@ -644,6 +693,14 @@ function startApp() {
     update();
     $("p-name").focus();
   });
+  $("btn-random").addEventListener("click", () => {
+    // Pick against the colour the plot is actually drawn on, so it follows Dark, Light and Auto.
+    const hex = randomContrastingColour(getComputedStyle($("plot")).backgroundColor);
+    $("p-color").value = hex;
+    doc.props.color = pickerToSmaart(hex);
+    update();
+    $("btn-random").focus();
+  });
   $("p-color").addEventListener("input", () => { doc.props.color = pickerToSmaart($("p-color").value); update(); });
   $("p-line").addEventListener("change", () => { doc.props.line = Number($("p-line").value); update(); });
   $("p-show").addEventListener("change", () => { doc.props.show = $("p-show").checked ? 1 : 0; update(); });
@@ -651,6 +708,7 @@ function startApp() {
   bindNum("p-tol", (n) => { doc.props.tolerance = n; });
   bindNum("p-offset", (n) => { doc.props.offset = n; }, { optional: true });
   bindNum("n-at", (n) => { doc.normalise.at = n; });
+  bindNum("g-eps", (n) => { doc.grid.epsilon = n; });
   $("n-on").addEventListener("change", () => { doc.normalise.on = $("n-on").checked; update(); });
 
   // ---- add layer
@@ -672,6 +730,13 @@ function startApp() {
   $("btn-new").addEventListener("click", () => {
     importMessages = [];
     setDoc(newDoc());
+  });
+  $("btn-reset-import").addEventListener("click", () => {
+    const fresh = resetToImport(doc);
+    if (!fresh) return;
+    importMessages = ["Reset to the imported curve. Press Undo to get your edits back."];
+    noticeSig = "";
+    setDoc(fresh);
   });
   $("btn-undo").addEventListener("click", undo);
   $("btn-redo").addEventListener("click", redo);

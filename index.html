@@ -27,9 +27,11 @@
     <aside class="side" aria-label="Curve settings">
       <section aria-labelledby="h-props">
         <h2 id="h-props">File properties</h2>
+        <button type="button" id="btn-reset-import" class="wide" hidden>Reset to imported .crv</button>
         <div class="field"><label for="p-name">Name</label><input id="p-name" type="text" autocomplete="off"></div>
         <div class="suggest"><button type="button" id="btn-suggest"></button></div>
         <div class="field"><label for="p-color">Colour</label><input id="p-color" type="color"></div>
+        <div class="suggest"><button type="button" id="btn-random">Random colour (contrasts with the theme)</button></div>
         <div class="field"><label for="p-line">Line width</label>
           <select id="p-line"><option>1</option><option>2</option><option>3</option><option>4</option><option>5</option></select>
         </div>
@@ -53,9 +55,11 @@
 
       <section aria-labelledby="h-grid">
         <h2 id="h-grid">Output grid</h2>
+        <button type="button" id="btn-lines" aria-pressed="false" class="wide">Hide points (lines only)</button>
         <fieldset id="grid-modes">
           <legend class="sr-only">Output grid resolution</legend>
         </fieldset>
+        <div class="field" id="eps-field" hidden><label for="g-eps">Max error (dB)</label><input id="g-eps" type="text" inputmode="decimal" autocomplete="off"></div>
         <div class="field"><label for="n-on">Normalise</label><input id="n-on" type="checkbox"></div>
         <div class="field"><label for="n-at">Normalise at (Hz)</label><input id="n-at" type="text" inputmode="decimal" autocomplete="off"></div>
       </section>
@@ -68,6 +72,10 @@
         <label for="zoom">Zoom ± dB</label>
         <input id="zoom" type="range" min="15" max="40" step="1" value="24" disabled aria-describedby="zoom-val">
         <output id="zoom-val" for="zoom">Auto</output>
+        <label for="yoff">Y offset (dB)</label>
+        <input id="yoff" type="range" min="-20" max="20" step="1" value="0" aria-describedby="yoff-val">
+        <output id="yoff-val" for="yoff">0 dB</output>
+        <button type="button" id="yoff-reset">Centre</button>
       </div>
       <svg id="plot" class="plot" aria-describedby="points-table"><title>Target curve plot</title></svg>
       <p class="note" id="handle-hint"></p>
@@ -92,6 +100,10 @@
       </section>
     </main>
   </div>
+  <footer class="footer">
+    <span>Free to use. If it saves you time:</span>
+    <a class="bmc" href="https://www.buymeacoffee.com/fohengineer" target="_blank" rel="noopener noreferrer"><span aria-hidden="true">🍺</span> Buy me a beer</a>
+  </footer>
   <input type="file" id="file-import" accept=".crv,.txt,text/plain" hidden>
   <input type="file" id="file-preset" accept=".json,application/json" hidden>
   <dialog id="dlg-presets" aria-labelledby="h-presets">

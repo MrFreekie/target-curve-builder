@@ -61,6 +61,14 @@ The snapping keeps the steps clean: on a 3 dB/oct tilt, 63 Hz is **exactly** +12
 ### 3.3 Keep-original grid (`grid.mode = "original"`)
 Output frequencies are exactly the imported file's frequencies, in the same order. All layers are evaluated at those frequencies. This is the default after import, so that importing a file and exporting it unchanged reproduces it.
 
+### 3.4 Breakpoints only (`grid.mode = "simplified"`)
+Added after v1.0.0. A `.crv` need not list every value, because Smaart draws a straight line between two points. This mode exports only the points needed to reproduce the curve within `grid.epsilon` dB (default 0.1, allowed 0.001 to 12).
+- **Dense curve:** evaluate on a 1/48-octave grid from `fmin` to `fmax` plus `fmin`, `fmax` and every layer corner (point frequencies; `pivot`, `corner`, `floor` and `fc` of enabled layers). A grid frequency with the same `pos()` as a corner, or within 1e-6 relative of one, is dropped (decided from the exact grid frequency, before rounding), so the corner keeps the frequency the user typed (62.5 Hz and 63 Hz are both -4 octaves). Corners are merged only when equal after rounding to 6 decimals.
+- **Normalise** is applied to the dense curve, then the curve is reduced, then values are rounded (§4.7).
+- **Reduce (Ramer-Douglas-Peucker):** always keep the first and last points. Between two kept points, if the largest vertical distance in dB from a point to the straight line between them, drawn against `pos(f)`, is more than `epsilon` minus 1e-6, keep that point and split there. (The 1 µdB margin keeps the guarantee true after rounding to 6 decimals.) An `epsilon` outside 0.001 to 12 counts as the default 0.1. `fmin` must be at least 1 Hz.
+- **Guarantee:** straight lines through the exported points, against `pos(f)`, stay within `epsilon` dB of the dense curve at every dense point.
+- **Assumption, not yet confirmed in Smaart:** that Smaart's straight line is against log frequency, like the plot.
+
 ---
 
 ## 4. Layers (all values in dB, summed)
@@ -95,6 +103,11 @@ Parameters: `fc` (Hz), `type`, `slope` (dB/oct, nominal). `r = fc/f` for a high-
 - **True slope:** a "48 dB/oct" filter's real stop-band slope is 8 × 6.0206 = 48.165 dB/oct. Tests must expect that, not exactly 48.
 - **Registry:** filters live in a registry `{ id, label, allowedSlopes, magnitudeDb(f, fc, slope, mode) }`, so adding Bessel or another type later means adding one entry.
 - **Default for a new HPF:** LR 48 dB/oct at 32 Hz. This matches the user's existing files.
+
+### 4.4a Sub boost, "haystack" (`kind: "subBoost"`)
+Added after v1.0.0. Boosts or cuts everything below a low-pass corner. Parameters: `db` (± dB), `fc` (Hz), `type` and `slope` as for filters (§4.4, same allowed slopes).
+
+`value(f) = db * M(f)`, where `M(f)` is the **linear** magnitude of the low-pass filter: `M = 10^(lpfDb(f, fc, type, slope) / 20)`. It is 1 far below `fc` and 0 far above, so the full `db` is reached well below the corner. At `fc` the Linkwitz-Riley value is half of `db` (M = 0.5), the Butterworth value is 0.7071 of `db`. Closed forms with `r = f/fc`, `n = slope/6`: LR `M = 1/(1 + r^n)`, BW `M = 1/sqrt(1 + r^(2n))`. Frequencies use Hz, like filters. A negative `db` is a cut, the exact mirror image. Magnitude only: this is not a parallel-summed filter, so phase doesn't change the result. Combine with an HPF layer for the haystack hump. `fc` is a layer corner for the "Breakpoints only" grid (§3.4).
 
 ### 4.5 Defaults for a new document
 - **Layers:** `points` (`[[20,0],[20000,0]]`, on), `lfTilt` (3 dB/oct, pivot 1 kHz, off), `fullTilt` (off), `hfTilt` (off), `hpf` (off), `lpf` (off).

@@ -111,14 +111,19 @@ export function createPlot(svg, callbacks = {}) {
   const path = (pts) => pts.map(([f, g], i) => `${i ? "L" : "M"}${xOf(f).toFixed(2)},${yOf(g).toFixed(2)}`).join(" ");
 
   /**
-   * @param {{points: number[][], original?: number[][]|null, yRange?: number|null, color: string, line: number,
+   * @param {{points: number[][], original?: number[][]|null, yRange?: number|null, yOffset?: number, hidePoints?: boolean, color: string, line: number,
    *          tolerance: number, useTolerance: boolean, show: boolean, description: string}} m
    */
   function render(m) {
     model = m;
     const curves = [m.points];
     if (m.original) curves.push(m.original);
-    if (!drag) [yMin, yMax] = m.yRange ? [-m.yRange, m.yRange] : range(curves, m.wide);
+    if (!drag) {
+      [yMin, yMax] = m.yRange ? [-m.yRange, m.yRange] : range(curves, m.wide);
+      // View offset: slide the visible window up or down; axis labels stay true dB values.
+      yMin += m.yOffset ?? 0;
+      yMax += m.yOffset ?? 0;
+    }
     const focused = svg.contains(document.activeElement) ? document.activeElement.dataset?.handle : undefined;
     drawGrid();
     const g = layers.clipped;
@@ -134,10 +139,10 @@ export function createPlot(svg, callbacks = {}) {
         g.append(el("path", { d: `${path(up)} L${path(dn).slice(1)} Z`, class: "band", fill: color }));
       }
       g.append(el("path", { d: path(m.points), class: "curve", stroke: color, "stroke-width": 1 + m.line, "stroke-dasharray": m.show ? "none" : "6 4" }));
-      for (const [f, v] of m.points) g.append(el("circle", { cx: xOf(f), cy: yOf(v), r: 3, class: "pt", stroke: color }));
+      if (!m.hidePoints) for (const [f, v] of m.points) g.append(el("circle", { cx: xOf(f), cy: yOf(v), r: 3, class: "pt", stroke: color }));
     }
     layers.handles.replaceChildren();
-    const hs = m.handles ?? [];
+    const hs = m.hidePoints ? [] : m.handles ?? [];
     if (rovingIndex >= hs.length) rovingIndex = 0;
     for (const h of hs) {
       const cx = Math.min(M.l + PW, Math.max(M.l, xOf(h.f)));

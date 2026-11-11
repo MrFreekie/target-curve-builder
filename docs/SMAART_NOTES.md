@@ -11,6 +11,9 @@ Findings about how Smaart handles `.crv` target curves. Keep this up to date.
 - **File extension:** the file must be `.crv`. Watch out for `.crv.txt` on macOS.
 - **Creating curves in Smaart:** from 9.5, a trace can be right-clicked and exported as a target curve.
 
+## Observed by the user
+- A `.crv` doesn't need to list every value: Smaart draws a straight line between two points (2026-11-10). Whether that line is straight against log frequency (as on screen) or against linear frequency isn't confirmed. See "Breakpoints only" in SPEC §3.4.
+
 ## Observed in the user's files
 - **Header order:** `Line, Color, Show, Type, Tolerance, UseTolerance`. CRLF line endings. Values have 6 decimals.
 - **`UseTolerance`:** present in the user's files but not mentioned in the article.

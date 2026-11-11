@@ -241,9 +241,9 @@ export function validateTf(doc, points) {
   if (!crvFileName(props.name)) err("Give the curve a file name.");
 
   for (const layer of doc.layers ?? []) {
-    if ((layer.kind === "hpf" || layer.kind === "lpf") && layer.on !== false) {
-      const filter = FILTERS[layer.type];
-      const label = layer.kind.toUpperCase();
+    if ((layer.kind === "hpf" || layer.kind === "lpf" || layer.kind === "subBoost") && layer.on !== false) {
+      const filter = Object.hasOwn(FILTERS, layer.type) ? FILTERS[layer.type] : undefined;
+      const label = layer.kind === "subBoost" ? "Sub boost" : layer.kind.toUpperCase();
       if (!filter) err(`${label}: unknown filter type "${layer.type}".`);
       else if (!filter.allowedSlopes.includes(Number(layer.slope))) {
         err(`${label}: ${filter.label} allows ${filter.allowedSlopes.join(", ")} dB/oct (got ${layer.slope}).`);

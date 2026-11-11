@@ -9,6 +9,7 @@ export const LAYER_KINDS = {
   lfTilt: "LF tilt",
   hfTilt: "HF tilt",
   fullTilt: "Full-spectrum tilt",
+  subBoost: "Sub boost (LPF shelf)",
   hpf: "HPF",
   lpf: "LPF",
   gain: "Gain",
@@ -41,6 +42,7 @@ export function newDoc() {
     ],
     normalise: { on: false, at: 1000 },
     original: null,
+    originalProps: null,
   };
 }
 
@@ -52,6 +54,7 @@ export function newLayer(kind) {
     case "lfTilt": return { ...base, dbPerOct: 3, pivot: 1000, floor: null };
     case "fullTilt": return { ...base, dbPerOct: 1, pivot: 1000 };
     case "hfTilt": return { ...base, dbPerOct: 1.5, corner: 4000 };
+    case "subBoost": return { ...base, fc: 60, type: "LR", slope: 24, db: 6 };
     case "hpf": return { ...base, fc: 32, type: "LR", slope: 48 };
     case "lpf": return { ...base, fc: 16000, type: "LR", slope: 24 };
     default: return { ...base, kind: "gain", db: 0 };
@@ -79,7 +82,7 @@ function loadPoints(list) {
 }
 
 function loadLayer(l) {
-  if (!isObj(l) || !(l.kind in LAYER_KINDS)) throw new Error("Unknown layer type.");
+  if (!isObj(l) || typeof l.kind !== "string" || !Object.hasOwn(LAYER_KINDS, l.kind)) throw new Error("Unknown layer type.");
   const out = { id: newId(), kind: l.kind, on: l.on !== false && l.on !== 0 };
   switch (l.kind) {
     case "points": out.points = loadPoints(l.points); break;
@@ -98,8 +101,9 @@ function loadLayer(l) {
       break;
     case "gain": out.db = num(l.db, "gain"); break;
     default: {
+      if (l.kind === "subBoost") out.db = num(l.db, "boost");
       out.fc = num(l.fc, "corner frequency", { positive: true });
-      const filter = FILTERS[l.type];
+      const filter = typeof l.type === "string" && Object.hasOwn(FILTERS, l.type) ? FILTERS[l.type] : undefined;
       if (!filter) throw new Error(`Unknown filter type ${l.type}.`);
       out.type = l.type;
       out.slope = num(l.slope, "filter slope");
@@ -109,16 +113,10 @@ function loadLayer(l) {
   return out;
 }
 
-/**
- * Validate and normalise an untrusted document (preset file, autosave).
- * Always returns a fresh object with fresh layer ids; throws Error with a readable message.
- * @param {unknown} obj
- * @returns {object}
- */
-export function loadDoc(obj) {
-  if (!isObj(obj) || obj.version !== 1) throw new Error("This isn't a Target Curve Builder document.");
+/** Validate untrusted file properties (name, colour, header lines...) on top of the defaults. */
+function loadProps(raw) {
   const base = newDoc();
-  const p = isObj(obj.props) ? obj.props : {};
+  const p = isObj(raw) ? raw : {};
   const props = { ...base.props };
   if (typeof p.name === "string") props.name = clean(p.name).replace(/\t/g, " ").slice(0, 200);
   if (p.format === "smaart-tf" || p.format === "smaart-spectrum") props.format = p.format;
@@ -143,14 +141,30 @@ export function loadDoc(obj) {
     });
   }
   if (Number.isFinite(p.band)) props.band = p.band;
+  return props;
+}
+
+/**
+ * Validate and normalise an untrusted document (preset file, autosave).
+ * Always returns a fresh object with fresh layer ids; throws Error with a readable message.
+ * @param {unknown} obj
+ * @returns {object}
+ */
+export function loadDoc(obj) {
+  if (!isObj(obj) || obj.version !== 1) throw new Error("This isn't a Target Curve Builder document.");
+  const base = newDoc();
+  const props = loadProps(obj.props);
 
   const g = isObj(obj.grid) ? obj.grid : {};
   const grid = { ...base.grid };
   if (FRACTIONS.includes(Number(g.fraction))) grid.fraction = Number(g.fraction);
-  if (Number.isFinite(g.fmin) && g.fmin > 0) grid.fmin = g.fmin;
+  if (Number.isFinite(g.fmin) && g.fmin >= 1) grid.fmin = g.fmin;
   if (Number.isFinite(g.fmax) && g.fmax >= grid.fmin) grid.fmax = g.fmax;
+  if (grid.fmax < grid.fmin) { grid.fmin = base.grid.fmin; grid.fmax = base.grid.fmax; } // fmin above the default fmax
+  const originalProps = isObj(obj.originalProps) ? loadProps(obj.originalProps) : null;
   const original = obj.original === null || obj.original === undefined ? null : loadPoints(obj.original);
-  grid.mode = g.mode === "original" && original ? "original" : "resample";
+  grid.mode = g.mode === "original" && original ? "original" : g.mode === "simplified" ? "simplified" : "resample";
+  if (Number.isFinite(g.epsilon) && g.epsilon >= 0.001 && g.epsilon <= 12) grid.epsilon = g.epsilon;
 
   if (!Array.isArray(obj.layers) || obj.layers.length > MAX_LAYERS) throw new Error("Invalid layer list.");
   const n = isObj(obj.normalise) ? obj.normalise : {};
@@ -161,6 +175,7 @@ export function loadDoc(obj) {
     layers: obj.layers.map(loadLayer),
     normalise: { on: n.on === true, at: Number.isFinite(n.at) && n.at > 0 ? n.at : 1000 },
     original,
+    originalProps: original ? originalProps : null,
   };
 }
 
@@ -184,6 +199,7 @@ export function docFromImport(text, fileName = "") {
   doc.layers = doc.layers.map((l) => (l.kind === "points" ? { ...l, on: true, points: r.points.map((p) => [...p]) } : { ...l, on: false }));
   doc.grid.mode = "original";
   doc.original = r.points.map((p) => [...p]);
+  doc.originalProps = JSON.parse(JSON.stringify(doc.props)); // for "Reset to imported"
   return { doc, warnings: r.warnings };
 }
 
@@ -201,4 +217,23 @@ export function convertToTf(doc) {
     out.original = out.original.map(([f, g]) => [f, g - ref]);
   }
   return out;
+}
+
+/**
+ * The document as it was when the file was imported: the file's points in the points layer, every other
+ * layer off, the "original" grid, no normalise, and the file's own properties and header lines.
+ * Returns null for a document that wasn't imported. (A converted spectrum curve resets to its TF form.)
+ * @param {object} doc
+ * @returns {object|null} a new document
+ */
+export function resetToImport(doc) {
+  if (!doc.original || !doc.original.length) return null;
+  const fresh = newDoc();
+  fresh.props = JSON.parse(JSON.stringify(doc.originalProps ?? doc.props));
+  if (doc.originalProps && doc.props.format === "smaart-tf" && fresh.props.format === "smaart-spectrum") fresh.props.format = "smaart-tf";
+  fresh.layers = fresh.layers.map((l) => (l.kind === "points" ? { ...l, on: true, points: doc.original.map((p) => [...p]) } : { ...l, on: false }));
+  fresh.grid.mode = "original";
+  fresh.original = doc.original.map((p) => [...p]);
+  fresh.originalProps = doc.originalProps ? JSON.parse(JSON.stringify(doc.originalProps)) : null;
+  return fresh;
 }

@@ -27,6 +27,8 @@ function parts(l) {
       const flat = l.points.every((p) => p[1] === l.points[0][1]);
       return flat && !l.points[0]?.[1] ? [] : [flat ? `Flat${n(l.points[0][1])}dB` : `Pts${l.points.length}`];
     }
+    case "subBoost":
+      return l.db ? [`Sub${l.db > 0 ? "+" : ""}${n(l.db)}dB_${n(l.fc)}Hz_${l.type}${n(l.slope)}`] : [];
     case "hpf":
       return [filterName(l, "HPF")];
     case "lpf":
@@ -37,14 +39,14 @@ function parts(l) {
 }
 
 /**
- * Suggest a name from the enabled layers: tilts and points first, then gain, then the high-pass
- * and low-pass filters. A curve with nothing switched on is "Flat".
+ * Suggest a name from the enabled layers: tilts and points first, then gain, the sub boost, then the
+ * high-pass and low-pass filters. A curve with nothing switched on is "Flat".
  * @param {{layers: object[]}} doc
  * @returns {string}
  */
 export function suggestName(doc) {
   const on = doc.layers.filter((l) => l.on !== false && l.on !== 0);
-  const order = { points: 0, fullTilt: 1, lfTilt: 1, hfTilt: 2, gain: 3, hpf: 4, lpf: 5 };
+  const order = { points: 0, fullTilt: 1, lfTilt: 1, hfTilt: 2, gain: 3, subBoost: 3.5, hpf: 4, lpf: 5 };
   const sorted = [...on].sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9));
   const name = sorted.flatMap(parts).join("_");
   return name || "Flat";

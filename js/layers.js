@@ -47,7 +47,7 @@ function checkSlope(filter, slope) {
  * @returns {number} dB
  */
 export function filterDb(f, fc, type, slope, mode) {
-  const filter = FILTERS[type];
+  const filter = Object.hasOwn(FILTERS, type) ? FILTERS[type] : undefined;
   if (!filter) throw new RangeError(`Unknown filter type ${type}`);
   return filter.magnitudeDb(f, fc, slope, mode);
 }
@@ -99,6 +99,11 @@ export function layerDb(f, layer) {
       return filterDb(f, layer.fc, layer.type, layer.slope, "lp");
     case "gain":
       return layer.db;
+    case "subBoost":
+      // "Haystack": gain below a low-pass corner. db is scaled by the filter's linear magnitude (1 far below
+      // the corner, 0 far above), so the full boost is reached well below fc and the corner gives a half
+      // boost for Linkwitz-Riley.
+      return layer.db * 10 ** (filterDb(f, layer.fc, layer.type, layer.slope, "lp") / 20);
     default:
       throw new RangeError(`Unknown layer kind ${layer.kind}`);
   }
