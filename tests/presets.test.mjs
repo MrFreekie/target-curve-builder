@@ -2,7 +2,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 import { newDoc } from "../js/doc.js";
 import * as P from "../js/presets.js";
 

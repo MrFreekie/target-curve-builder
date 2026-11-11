@@ -5,7 +5,7 @@ import { layerDb, filterDb, FILTERS, LAYER_LIMITS } from "../js/layers.js";
 import { bellDb, resonantDb, besselDb, chebyshevDb } from "../js/eq.js";
 import { newDoc, newLayer, loadDoc, LAYER_KINDS } from "../js/doc.js";
 import { suggestName } from "../js/naming.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 
 const close = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got ${a}, want ${b}`);
 const KINDS = ["subBoost", "hiShelf", "bell", "hill", "rHpf", "rLpf"];

@@ -237,6 +237,7 @@ export function shapeDb(shape, f, fc, width, db, flat = 0.5, count = 3) {
   let u = Math.log2(f / fc) / (width / 2);
   // A frequency within 1e-12 of an edge (floating-point noise) counts as exactly on the edge.
   if (!(Math.abs(u) <= 1 + 1e-12)) return 0; // also 0 for NaN
+  if (Math.abs(Math.abs(u) - 1) <= 1e-12) u = Math.sign(u); // just inside counts as exactly on the edge too
   u = Math.max(-1, Math.min(1, u));
   return db * SHAPES[shape].value(u, flat, count);
 }

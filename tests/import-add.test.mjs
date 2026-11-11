@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { isBlank, addImportedLayer, docFromImport, newDoc, newLayer, loadDoc, resetToImport } from "../js/doc.js";
 import { evaluate } from "../js/curve.js";
 import { interpPoints } from "../js/layers.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 import { suggestName } from "../js/naming.js";
 
 const sample = (f) => readFileSync(`reference/samples/${f}`, "utf8");

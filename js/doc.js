@@ -3,7 +3,7 @@
 import { FILTERS, LAYER_LIMITS, interpPoints } from "./layers.js";
 import { WEIGHTINGS, SHAPES } from "./eq.js";
 import { detectFormat } from "./formats/index.js";
-import { sanitiseFileName } from "./formats/smaart.js";
+import { sanitiseFileName, KNOWN, parseValue } from "./formats/smaart.js";
 import { MAX_TRACE_POINTS, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT } from "./trace.js";
 
 export const LAYER_KINDS = {
@@ -27,6 +27,13 @@ export const LAYER_KINDS = {
 
 const MAX_LAYERS = 50;
 const MAX_POINTS = 5000;
+/** Most points across every Points layer and the imported original together, so a hostile file can't make every edit slow. */
+export const MAX_TOTAL_POINTS = 20000;
+
+/** Points held by all Points layers and the imported original: the number MAX_TOTAL_POINTS limits. */
+export function totalPoints(doc) {
+  return (doc.layers ?? []).reduce((n, l) => n + (l.kind === "points" && Array.isArray(l.points) ? l.points.length : 0), 0) + (Array.isArray(doc.original) ? doc.original.length : 0);
+}
 const FRACTIONS = [1, 3, 6, 12, 24, 48];
 
 let nextId = 1;
@@ -224,9 +231,12 @@ function loadProps(raw) {
       if (!isObj(h) || typeof h.key !== "string" || typeof h.raw !== "string") throw new Error("Invalid header.");
       const key = clean(h.key).trim().toLowerCase();
       const raw = clean(h.raw);
-      // A header line must really start with its own key, or it could shadow a canonical line.
-      if (!raw.toLowerCase().startsWith(key) || !/^[a-z][a-z0-9_ ]*$/.test(key)) throw new Error("Invalid header.");
-      return { key, raw, parsed: typeof h.parsed === "string" ? clean(h.parsed) : typeof h.parsed === "number" ? h.parsed : null };
+      // A header line must really be "key:" then a value, or it could shadow a canonical line.
+      const colon = raw.indexOf(":");
+      if (!/^[a-z][a-z0-9_ ]*$/.test(key) || colon < 0 || raw.slice(0, colon).trimEnd().toLowerCase() !== key) throw new Error("Invalid header.");
+      // Work out what the line says from the line itself: the writer puts the line back as it is only when this
+      // matches the current setting, so a doctored "parsed" can't smuggle a bad value into an export.
+      return { key, raw, parsed: KNOWN.includes(key) ? parseValue(key, raw.slice(colon + 1)) : null };
     });
   }
   if (Number.isFinite(p.band)) props.band = p.band;
@@ -274,17 +284,41 @@ export function loadDoc(obj) {
     return { name: name || def.name, on: g.on !== false };
   });
   const template = loadTemplate(obj.template);
+  const layers = obj.layers.map(loadLayer);
+  if (totalPoints({ layers, original }) > MAX_TOTAL_POINTS) throw new Error(`Too many points in total (more than ${MAX_TOTAL_POINTS}).`);
   return {
     version: 1,
     props,
     grid,
-    layers: obj.layers.map(loadLayer),
+    layers,
     normalise: { on: n.on === true, at: Number.isFinite(n.at) && n.at > 0 ? n.at : 1000 },
     original,
     originalProps: original ? originalProps : null,
     groups,
     ...(template ? { template } : {}),
   };
+}
+
+/**
+ * Read a detected file and tidy its points: at least 2 and at most MAX_POINTS, sorted by frequency, and a repeated
+ * frequency dropped (the first row wins), because export needs strictly ascending frequencies. A file that was
+ * already in order is returned unchanged.
+ * @returns {{props: object, points: number[][], warnings: string[]}}
+ */
+function readPoints(found, text) {
+  const r = found.adapter.read(text);
+  if (r.points.length < 2) throw new Error("The file has fewer than 2 readable data rows.");
+  if (r.points.length > MAX_POINTS) throw new Error(`The file has more than ${MAX_POINTS} points.`);
+  const warnings = [...r.warnings];
+  let points = r.points;
+  if (points.some((p, i) => i > 0 && p[0] <= points[i - 1][0])) {
+    const sorted = points.map((p, i) => [p, i]).sort((a, b) => a[0][0] - b[0][0] || a[1] - b[1]).map(([p]) => p);
+    const before = sorted.length;
+    points = sorted.filter((p, i) => i === 0 || p[0] !== sorted[i - 1][0]);
+    warnings.push(`The rows weren't in ascending frequency order, so they were sorted${points.length < before ? ` and ${before - points.length} repeated frequenc${before - points.length === 1 ? "y was" : "ies were"} dropped` : ""}.`);
+    if (points.length < 2) throw new Error("The file has fewer than 2 different frequencies.");
+  }
+  return { ...r, points, warnings };
 }
 
 /**
@@ -298,9 +332,7 @@ export function loadDoc(obj) {
 export function docFromImport(text, fileName = "") {
   const found = detectFormat(text);
   if (!found) throw new Error("This doesn't look like a Smaart .crv file.");
-  const r = found.adapter.read(text);
-  if (r.points.length < 2) throw new Error("The file has fewer than 2 readable data rows.");
-  if (r.points.length > MAX_POINTS) throw new Error(`The file has more than ${MAX_POINTS} points.`);
+  const r = readPoints(found, text);
   const doc = newDoc();
   const name = sanitiseFileName(fileName.replace(/\.[^.]*$/, "")) || "Imported curve";
   doc.props = { ...doc.props, ...r.props, name, format: found.adapter.id };
@@ -333,18 +365,17 @@ export function isBlank(doc) {
 export function addImportedLayer(doc, text, fileName = "") {
   const found = detectFormat(text);
   if (!found) throw new Error("This doesn't look like a Smaart .crv file.");
-  const r = found.adapter.read(text);
-  if (r.points.length < 2) throw new Error("The file has fewer than 2 readable data rows.");
-  if (r.points.length > MAX_POINTS) throw new Error(`The file has more than ${MAX_POINTS} points.`);
+  const r = readPoints(found, text);
   let points = r.points.map((p) => [...p]);
   const shifted = found.adapter.id === "smaart-spectrum";
   if (shifted) {
     const ref = interpPoints(1000, points);
     points = points.map(([f, g]) => [f, g - ref]);
   }
+  if (totalPoints(doc) + points.length > MAX_TOTAL_POINTS) throw new Error(`Adding this file would take the curve past ${MAX_TOTAL_POINTS} points in total. Delete a Points layer first.`);
   const next = JSON.parse(JSON.stringify(doc));
   const layer = { id: newId(), kind: "points", on: true, group: 1, points };
-  const label = clean(fileName).replace(/	/g, " ").trim().slice(0, 100);
+  const label = clean(fileName).replace(/\t/g, " ").trim().slice(0, 100);
   if (label) layer.label = label;
   next.layers.push(layer);
   return { doc: next, layerId: layer.id, warnings: r.warnings, shifted };

@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readdirSync, readFileSync } from "node:fs";
 import { docFromImport, resetToImport, loadDoc, newDoc } from "../js/doc.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 
 const dir = "reference/samples/";
 const samples = readdirSync(dir).filter((f) => f.endsWith(".crv"));

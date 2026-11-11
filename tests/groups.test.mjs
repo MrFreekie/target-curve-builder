@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { evaluate, visibleLayers, layerGhosts, totalDb, keyFrequencies } from "../js/curve.js";
 import { newDoc, newLayer, loadDoc, defaultGroups, GROUP_COUNT, isBlank, addImportedLayer } from "../js/doc.js";
 import { suggestName } from "../js/naming.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 import { validateTf } from "../js/formats/smaart.js";
 
 const close = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got ${a}, want ${b}`);

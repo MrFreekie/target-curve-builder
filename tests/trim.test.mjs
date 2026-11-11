@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { evaluate, effectiveRange, makeGrid } from "../js/curve.js";
 import { newDoc, loadDoc, docFromImport, resetToImport } from "../js/doc.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 
 const withGrid = (grid, extra = {}) => { const d = newDoc(); d.grid = { mode: "resample", fraction: 3, fmin: 20, fmax: 20000, ...grid }; Object.assign(d, extra); return d; };
 const tilt = (d) => { d.layers.find((l) => l.kind === "lfTilt").on = true; return d; };

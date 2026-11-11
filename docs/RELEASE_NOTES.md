@@ -1,6 +1,11 @@
 # Release notes
 
-## Unreleased
+## v1.1.0 (2026-11-11)
+- Works offline: after the first visit the app opens with no network (a service worker keeps a copy), and it can be installed from the browser. It re-checks the server every time it is online, so an old copy is never used while a new one exists.
+- Search and sharing: a proper page title and description, a short About section, a preview image, a sitemap and robots file.
+- Browser regression tests (`node e2e/smoke.mjs`) drive a real headless Chrome or Edge through loading, import, editing, undo, shared links, a broken autosave, layout at four widths and offline start. They run in the project's checks on every push.
+- A saved curve that can't be restored now says why instead of quietly starting a new one, and the point limit is enforced wherever points are added.
+- Fixes from a code review: number boxes always go back to the document's value after bad input; opening a shared link asks before replacing your curve and also works when pasted into an open tab; a curve that can't be drawn no longer traps the page on reload (`?fresh` starts a new curve); points are capped at 20 000 in total and long point lists evaluate faster; a saved header line can no longer smuggle a bad value into an export; imported files with unsorted or repeated frequencies are tidied with a warning; vertical drags no longer rewrite a point's frequency; notices clear on the next edit; the points table and file text aren't rebuilt on every drag move; preset saves leave out the reference trace and say whether storage is full or blocked.
 - Output grid: Breakpoints only is now a tick box that works with any resolution (it keeps the points that matter from the chosen grid, plus every layer corner), and Hide points is a tick box too. A 1/48 octave choice was added. Each trim has a tick box and shows 20 Hz and 20 kHz as its starting values. Normalise has its tick box beside the Hz box. Older saved documents that used the Breakpoints only mode load as breakpoints only on 1/48 octave.
 - Plain text export: Hz and dB, tab separated (Hz to 3 decimals, dB to 2), for REW, HouseCurve and spreadsheets.
 - Reference trace: import a measurement or any Hz and dB text to draw behind the target, with offset, smoothing and 0 dB at 1 kHz, a show/hide box, and an Add as a layer button. Never exported (SPEC §10).

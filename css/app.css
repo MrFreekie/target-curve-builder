@@ -55,6 +55,12 @@ button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0
 .name-row input { flex: 1; min-width: 0; width: auto; }
 .name-row button { white-space: nowrap; font-size: 0.85rem; }
 .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.about { max-width: 70ch; margin: 24px auto 40px; padding: 0 16px; color: var(--muted); }
+.about h2 { margin-bottom: 8px; }
+.about h3 { font-size: 0.95rem; margin: 16px 0 6px; color: var(--text); }
+.about h4 { font-size: 0.9rem; margin: 12px 0 2px; color: var(--text); }
+.about p, .about li { font-size: 0.9rem; }
+.about a { color: var(--accent); }
 .tabitem { display: inline-flex; }
 .tabitem .tab { border-radius: 8px 0 0 0; }
 .eye { display: inline-flex; align-items: center; min-height: 44px; min-width: 40px; justify-content: center; padding: 6px 8px; border-radius: 0 8px 0 0; border-bottom: none; background: var(--panel2); color: var(--muted); }

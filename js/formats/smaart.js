@@ -5,7 +5,7 @@ import { FILTERS, LAYER_LIMITS } from "../layers.js";
 import { WEIGHTINGS, SHAPES } from "../eq.js";
 
 /** Known header keys (lower case) in canonical order. */
-const KNOWN = ["line", "color", "show", "type", "tolerance", "usetolerance", "offset"];
+export const KNOWN = ["line", "color", "show", "type", "tolerance", "usetolerance", "offset"];
 const CANONICAL_KEY = {
   line: "Line", color: "Color", show: "Show", type: "Type",
   tolerance: "Tolerance", usetolerance: "UseTolerance", offset: "Offset",
@@ -56,7 +56,7 @@ export function exportFileName(name, ext) {
 }
 
 /** Parse the value of a known header key to a comparable form. */
-function parseValue(key, value) {
+export function parseValue(key, value) {
   const v = String(value).trim();
   if (key === "color") return v.toLowerCase();
   if (key === "type") return v;

@@ -5,7 +5,7 @@ import { layerDb } from "../js/layers.js";
 import { evaluate, keyFrequencies } from "../js/curve.js";
 import { newDoc, newLayer, loadDoc, LAYER_KINDS } from "../js/doc.js";
 import { suggestName } from "../js/naming.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 
 const close = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got ${a}, want ${b}`);
 // Reference written from the definition: two raised-cosine steps (half a cosine cycle against log2 f), summed.

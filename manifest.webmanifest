@@ -1,0 +1,13 @@
+{
+  "name": "Target Curve Builder",
+  "short_name": "Target Curves",
+  "description": "Build, import and edit Smaart target curves (.crv). Free, and it works offline.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#14161a",
+  "theme_color": "#14161a",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

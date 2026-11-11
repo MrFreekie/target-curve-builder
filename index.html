@@ -3,10 +3,26 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Target Curve Builder</title>
-  <meta name="description" content="Build, import and edit Smaart transfer function target curves (.crv).">
+  <title>Target Curve Builder: free Smaart .crv target curve generator</title>
+  <meta name="description" content="Build, import and edit Smaart target curves (.crv) for PA and sound system tuning. Tilts, filters, weighting curves, presets and shareable links. Free, runs in your browser, nothing uploaded.">
+  <link rel="canonical" href="https://mrfreekie.github.io/target-curve-builder/">
+  <meta name="robots" content="index, follow">
+  <meta name="theme-color" content="#14161a">
+  <link rel="icon" href="icon.svg" type="image/svg+xml">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="Target Curve Builder">
+  <meta property="og:title" content="Target Curve Builder: free Smaart .crv target curve generator">
+  <meta property="og:description" content="Build, import and edit Smaart target curves (.crv) for PA and sound system tuning. Tilts, filters, weighting curves, presets and shareable links. Free, runs in your browser, nothing uploaded.">
+  <meta property="og:url" content="https://mrfreekie.github.io/target-curve-builder/">
+  <meta property="og:image" content="https://mrfreekie.github.io/target-curve-builder/og-image.jpg">
+  <meta property="og:image:alt" content="A target curve with a low-frequency tilt and a high-pass filter drawn on a frequency response graph.">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Target Curve Builder: free Smaart .crv target curve generator">
+  <meta name="twitter:description" content="Build, import and edit Smaart target curves (.crv) for PA and sound system tuning. Tilts, filters, weighting curves, presets and shareable links. Free, runs in your browser, nothing uploaded.">
+  <meta name="twitter:image" content="https://mrfreekie.github.io/target-curve-builder/og-image.jpg">
   <!-- The app loads nothing from other sites and needs no inline scripts or styles, so say so. -->
-  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; connect-src 'self'; manifest-src 'self'; worker-src 'self'; base-uri 'none'; form-action 'none'; object-src 'none'">
   <meta name="referrer" content="no-referrer">
   <link rel="stylesheet" href="css/app.css">
 </head>
@@ -138,6 +154,26 @@
       </section>
     </main>
   </div>
+  <footer class="about" itemscope itemtype="https://schema.org/WebApplication">
+    <meta itemprop="applicationCategory" content="MultimediaApplication">
+    <meta itemprop="operatingSystem" content="Any, in a web browser">
+    <meta itemprop="isAccessibleForFree" content="true">
+    <h2 itemprop="name">About Target Curve Builder</h2>
+    <p itemprop="description">Target Curve Builder is a free tool for building, importing and editing the target curves that Smaart uses in its transfer function view. Make a house curve for a PA or sound system, then export it as a Smaart <code>.crv</code> file in one click. It runs entirely in your browser: nothing is uploaded, there is no account, and it works offline once loaded.</p>
+    <h3>How it works</h3>
+    <ol>
+      <li>Start from a preset (a 3 dB/oct tilt with a 32 Hz high-pass, the cinema X-curve, A or C weighting) or from a flat curve, or import an existing <code>.crv</code>.</li>
+      <li>Add layers: low-frequency, full and high-frequency tilts, Butterworth, Linkwitz-Riley, Bessel or Chebyshev high-pass and low-pass filters up to 96 dB/oct, shelves, bells, shapes and your own points. They add together, and you can drag points on the graph.</li>
+      <li>Choose the output grid (1/1 to 1/48 octave, the imported points, or breakpoints only), then export the <code>.crv</code>. In Smaart, import it from the target curve manager.</li>
+    </ol>
+    <h3>Questions</h3>
+    <h4>What is a Smaart target curve?</h4>
+    <p>A <code>.crv</code> file of frequencies and levels that Smaart draws behind a transfer function trace, so you can tune a system towards it. Transfer function target curves need a measurement-capable edition of Smaart 9.4 or later, or Smaart Data Modeler.</p>
+    <h4>Can I use it for REW or other software?</h4>
+    <p>Yes. It can also export plain text (Hz and dB) and a Smaart ASCII trace, and import a measurement as a reference trace.</p>
+    <h4>Is it free to use?</h4>
+    <p>Yes, for any non-commercial purpose, under the <a href="LICENSE.md">PolyForm Noncommercial licence</a>. The source is on <a href="https://github.com/MrFreekie/target-curve-builder">GitHub</a>.</p>
+  </footer>
   <input type="file" id="file-import" accept=".crv,.txt,text/plain" hidden>
   <input type="file" id="file-trace" accept=".crv,.txt,.csv,.dat,text/plain" hidden>
   <input type="file" id="file-preset" accept=".json,application/json" hidden>
@@ -151,11 +187,20 @@
     </div>
     <p class="note"><strong>Replace</strong> opens the file as the curve, with its own name, colour and header. <strong>Add as a layer</strong> keeps your curve and adds the file's points as a new Points layer that sums with the other layers. Both can be undone.</p>
   </dialog>
+  <dialog id="dlg-link" aria-labelledby="h-link">
+    <h2 id="h-link">Open a shared curve?</h2>
+    <p>This link holds a curve. Opening it replaces the curve you have open now. You can undo that.</p>
+    <div class="actions">
+      <button type="button" id="link-keep" autofocus>Keep my curve</button>
+      <button type="button" id="link-open" class="primary">Open the shared curve</button>
+    </div>
+  </dialog>
   <dialog id="dlg-presets" aria-labelledby="h-presets">
     <div class="row-head"><h2 id="h-presets">Presets</h2><button type="button" id="btn-presets-close">Close</button></div>
     <div id="presets-body"></div>
     <p id="presets-status" class="note" role="status" tabindex="-1"></p>
   </dialog>
+  <noscript><p class="notice">Target Curve Builder needs JavaScript. It runs entirely in your browser and uploads nothing.</p></noscript>
   <script type="module" src="js/app.js"></script>
 </body>
 </html>

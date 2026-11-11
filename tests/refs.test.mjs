@@ -6,7 +6,7 @@ import { writePlainText } from "../js/formats/plain-text.js";
 import { getAdapter } from "../js/formats/index.js";
 import { parseTrace, traceCurve, MAX_TRACE_POINTS } from "../js/trace.js";
 import { encodeShare, decodeShare, MAX_SHARE_JSON } from "../js/share.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 
 const bellDoc = (extra = {}) => {
   const d = newDoc();

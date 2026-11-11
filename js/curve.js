@@ -241,7 +241,21 @@ export function evaluate(doc, freqs) {
     const ranged = { ...grid, fmin: lo, fmax: hi };
     if (!(lo <= hi)) freqs = []; // an empty range (a trim past the other end of the grid) holds no points
     else if (grid.mode === "original" && doc.original) {
-      freqs = doc.original.map((p) => p[0]).filter((f) => (!Number.isFinite(grid.trimLow) || f >= grid.trimLow) && (!Number.isFinite(grid.trimHigh) || f <= grid.trimHigh));
+      const inTrim = (f) => (!Number.isFinite(grid.trimLow) || f >= grid.trimLow) && (!Number.isFinite(grid.trimHigh) || f <= grid.trimHigh);
+      freqs = doc.original.map((p) => p[0]).filter(inTrim);
+      if (simplified && freqs.length) {
+        // Breakpoints on the imported points also keep every layer corner inside the imported range, and the trim ends
+        // (SPEC §3.4, §3.5), so the straight lines between the kept points can't cut a corner the layers put in.
+        const first = doc.original.reduce((m, p) => Math.min(m, p[0]), Infinity);
+        const last = doc.original.reduce((m, p) => Math.max(m, p[0]), -Infinity);
+        const extra = keyFrequencies(visibleLayers(doc)).filter((f) => f >= first && f <= last && inTrim(f)).map(round6);
+        // a trim end only counts where there is imported data: a trim past the imported range doesn't widen the export
+        for (const t of [grid.trimLow, grid.trimHigh]) if (Number.isFinite(t) && t >= first && t <= last) extra.push(round6(t));
+        // one row per 6-decimal frequency, the imported frequency winning over a corner that rounds to the same value
+        const seen = new Set(freqs.map(round6));
+        for (const f of extra) if (!seen.has(f)) { seen.add(f); freqs.push(f); }
+        freqs.sort((a, b) => a - b);
+      }
     } else if (simplified) freqs = denseGrid({ ...doc, grid: ranged, layers: visibleLayers(doc) }, legacySimplified ? 48 : Number(grid.fraction ?? 3));
     else freqs = makeGrid(ranged);
   }

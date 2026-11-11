@@ -258,8 +258,8 @@ export function createPlot(svg, callbacks = {}) {
       const [x, y] = toSvg(ev);
       // Keep the point inside the plot's dB range, however far the pointer goes.
       const dDb = Math.min(yMax - drag.g0, Math.max(yMin - drag.g0, ((drag.y0 - y) / PH) * (yMax - yMin)));
-      // Shift moves the frequency by the pointer's offset from where it was grabbed; no Shift restores it.
-      const hz = ev.shiftKey ? snap24(drag.f0 * 2 ** (((x - drag.x0) / PW) * OCTAVES)) : drag.f0;
+      // Shift moves the frequency by the pointer's offset from where it was grabbed; without Shift the caller gets null and keeps the point's own frequency.
+      const hz = ev.shiftKey ? snap24(drag.f0 * 2 ** (((x - drag.x0) / PW) * OCTAVES)) : null;
       callbacks.onDrag(drag.i, dDb, hz);
       return;
     }

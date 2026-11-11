@@ -2,7 +2,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { buildCrv, newDoc as appNewDoc } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
+import { newDoc as appNewDoc } from "../js/doc.js";
 import { newDoc, newLayer, loadDoc, docFromImport, convertToTf, LAYER_KINDS } from "../js/doc.js";
 
 const samplesDir = new URL("../reference/samples/", import.meta.url);

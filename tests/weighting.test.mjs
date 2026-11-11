@@ -6,7 +6,7 @@ import { evaluate } from "../js/curve.js";
 import { newDoc, newLayer, loadDoc, LAYER_KINDS } from "../js/doc.js";
 import { BUILT_IN_PRESETS } from "../js/presets.js";
 import { suggestName } from "../js/naming.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 
 const close = (a, b, tol, msg) => assert.ok(Math.abs(a - b) <= tol, `${msg}: got ${a}, want ${b}`);
 

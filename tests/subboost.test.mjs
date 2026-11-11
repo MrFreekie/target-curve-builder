@@ -4,7 +4,7 @@ import { evaluate, totalDb } from "../js/curve.js";
 import { layerDb } from "../js/layers.js";
 import { newDoc, newLayer, loadDoc, LAYER_KINDS } from "../js/doc.js";
 import { suggestName } from "../js/naming.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 
 const sub = (o = {}) => ({ kind: "subBoost", on: true, fc: 60, type: "LR", slope: 24, db: 6, ...o });
 const doc = (layers) => ({ grid: { mode: "resample", fraction: 3, fmin: 20, fmax: 20000 }, layers });

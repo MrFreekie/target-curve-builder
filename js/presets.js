@@ -13,13 +13,35 @@ function read(key) {
   }
 }
 
+let lastFailure = null;
+
 function write(key, value) {
   try {
     localStorage.setItem(key, value);
+    lastFailure = null;
     return true;
-  } catch {
+  } catch (e) {
+    // a full store (QuotaExceededError, or Firefox's NS_ERROR_DOM_QUOTA_REACHED) is not the same as blocked storage
+    lastFailure = e && (e.name === "QuotaExceededError" || e.code === 22 || e.code === 1014) ? "full" : "blocked";
     return false;
   }
+}
+
+/** Why the last save failed: "full", "blocked", or null if it worked. */
+export function storageFailure() {
+  return lastFailure;
+}
+
+/** A sentence for a failed save, naming the real cause. */
+export function storageProblemText() {
+  return lastFailure === "full" ? "this browser's storage for the site is full. Delete some saved presets" : "this browser is blocking storage for the site";
+}
+
+/** Forget the autosaved document (used when it can't be opened). */
+export function clearAutosave() {
+  try {
+    localStorage.removeItem(AUTOSAVE_KEY);
+  } catch { /* storage unavailable */ }
 }
 
 /** Save the current document JSON text. Returns false if storage isn't available. */
@@ -29,13 +51,22 @@ export function autosave(json) {
 
 /** The autosaved document, or null if there is none or it can't be used. */
 export function loadAutosave() {
+  autosaveProblem = null;
   const text = read(AUTOSAVE_KEY);
   if (!text) return null;
   try {
     return loadDoc(JSON.parse(text));
-  } catch {
+  } catch (e) {
+    autosaveProblem = e instanceof SyntaxError ? "it isn't readable" : e.message;
     return null;
   }
+}
+
+let autosaveProblem = null;
+
+/** Why the last loadAutosave found a saved curve it couldn't use, or null when there was none or it loaded. */
+export function lastAutosaveProblem() {
+  return autosaveProblem;
 }
 
 /** Names of saved presets, sorted. */
@@ -63,6 +94,7 @@ export function hasPreset(name) {
 export function savePreset(name, doc) {
   const all = readAll();
   all[name] = JSON.parse(JSON.stringify(doc));
+  delete all[name].template; // a reference trace can be large and is not part of the curve; links leave it out too
   return write(PRESETS_KEY, JSON.stringify(all));
 }
 

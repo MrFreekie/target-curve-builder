@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { evaluate, simplify, pos, makeGrid } from "../js/curve.js";
 import { interpPoints } from "../js/layers.js";
 import { newDoc, loadDoc } from "../js/doc.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 
 const layer = (d, k) => d.layers.find((l) => l.kind === k);
 const on = (d, k, extra = {}) => Object.assign(layer(d, k), { on: true }, extra);

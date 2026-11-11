@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://mrfreekie.github.io/target-curve-builder/sitemap.xml

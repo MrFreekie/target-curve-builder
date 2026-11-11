@@ -1,7 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { smaartAscii, writeAscii, fmt2 } from "../js/formats/smaart-ascii.js";
-import { buildCrv, newDoc } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
+import { newDoc } from "../js/doc.js";
 import { exportFileName, crvFileName } from "../js/formats/smaart.js";
 import { getAdapter, writableAdapters, detectFormat } from "../js/formats/index.js";
 

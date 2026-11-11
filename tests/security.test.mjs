@@ -7,7 +7,7 @@ import { readCrv, sanitiseFileName, crvFileName } from "../js/formats/smaart.js"
 import { docFromImport, loadDoc, addImportedLayer, newDoc } from "../js/doc.js";
 import * as presets from "../js/presets.js";
 import { detectFormat } from "../js/formats/index.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 import { suggestName } from "../js/naming.js";
 
 const jsFiles = [...readdirSync("js").filter((f) => f.endsWith(".js")).map((f) => `js/${f}`), ...readdirSync("js/formats").map((f) => `js/formats/${f}`)];
@@ -78,8 +78,9 @@ test("index.html: one strict Content-Security-Policy, a referrer policy, and not
 });
 
 test("index.html: the only external link is the tip jar, and it opens safely", () => {
-  const urls = [...html.matchAll(/(?:href|src|action)\s*=\s*"([^"]+)"/g)].map((m) => m[1]).filter((u) => /^(https?:)?\/\//.test(u));
-  assert.deepEqual(urls, ["https://www.buymeacoffee.com/fohengineer"]);
+  assert.match(html, /<link rel="canonical" href="https:\/\/mrfreekie\.github\.io\/target-curve-builder\/">/, "the canonical link names the site");
+  const urls = [...html.replace(/<link rel="canonical"[^>]*>/, "").matchAll(/(?:href|src|action)\s*=\s*"([^"]+)"/g)].map((m) => m[1]).filter((u) => /^(https?:)?\/\//.test(u));
+  assert.deepEqual(urls, ["https://www.buymeacoffee.com/fohengineer", "https://github.com/MrFreekie/target-curve-builder"]);
   const a = html.match(/<a [^>]*buymeacoffee[^>]*>/)[0];
   assert.match(a, /rel="noopener noreferrer"/);
   assert.match(a, /target="_blank"/);

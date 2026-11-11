@@ -1,10 +1,11 @@
 // UI state and wiring. Maths lives in curve.js / layers.js; file formats in formats/.
 import { evaluate, effectiveRange, layerGhosts, visibleLayers } from "./curve.js";
+import { buildCrv } from "./build.js";
 import { FILTERS } from "./layers.js";
 import { getAdapter, writableAdapters } from "./formats/index.js";
 import { fmt6, pickerToSmaart, smaartToPicker, crvFileName, exportFileName } from "./formats/smaart.js";
 import { createPlot } from "./plot.js";
-import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf, resetToImport, isBlank, addImportedLayer } from "./doc.js";
+import { LAYER_KINDS, newDoc, newLayer, docFromImport, convertToTf, resetToImport, isBlank, addImportedLayer, totalPoints, MAX_TOTAL_POINTS } from "./doc.js";
 import { WEIGHTINGS, SHAPES } from "./eq.js";
 import * as presets from "./presets.js";
 import { suggestName } from "./naming.js";
@@ -13,71 +14,13 @@ import { qToBw, bwToQ } from "./bandwidth.js";
 import { wavelengthLabel } from "./pitch.js";
 import { parseTrace, traceCurve, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT, MAX_TRACE_TEXT } from "./trace.js";
 import { encodeShare, decodeShare, LONG_LINK } from "./share.js";
+import { createHistory } from "./history.js";
+import { getPref, setPref } from "./prefs.js";
 
 export { newDoc, newLayer };
 
 /** The two trims: box id, grid key and the default shown when the trim is off. */
 const TRIMS = [["trim-low", "trimLow", 20], ["trim-high", "trimHigh", 20000]];
-
-/** Layer-level problems the format validator can't see. */
-function layerIssues(doc) {
-  const out = [];
-  const bad = (m) => out.push({ level: "error", message: m });
-  for (const l of visibleLayers(doc)) { // layers hidden by their group don't count
-    if (l.on === false) continue;
-    const name = LAYER_KINDS[l.kind];
-    if (l.kind === "points") {
-      if (!l.points.length) bad(`${name}: add at least one point or switch the layer off.`);
-      const hz = l.points.map((p) => p[0]);
-      if (new Set(hz).size !== hz.length) bad(`${name}: two points share the same frequency.`);
-    }
-    for (const key of ["pivot", "corner", "floor"]) {
-      if (l[key] !== undefined && l[key] !== null && !(l[key] > 0)) bad(`${name}: ${key} must be greater than 0 Hz.`);
-    }
-  }
-  if ((doc.grid.simplify === true || doc.grid.mode === "simplified") && doc.grid.epsilon !== undefined && !(doc.grid.epsilon >= 0.001 && doc.grid.epsilon <= 12)) {
-    bad("Breakpoints only: max error must be between 0.001 and 12 dB.");
-  }
-  const g = doc.grid;
-  for (const [key, label] of [["trimLow", "Low trim"], ["trimHigh", "High trim"]]) {
-    if (g[key] !== undefined && !(g[key] >= 1 && g[key] <= 100000)) bad(`${label} must be between 1 and 100000 Hz.`);
-  }
-  if (g.trimLow !== undefined && g.trimHigh !== undefined && !(g.trimLow < g.trimHigh)) bad("Low trim must be below high trim.");
-  else if (g.mode !== "original") {
-    const [lo, hi] = effectiveRange(g);
-    if (!(lo <= hi)) bad("The trim leaves no frequency range: the low trim is above the end of the grid, or the high trim below its start.");
-  }
-  if (doc.normalise.on && !(doc.normalise.at > 0)) bad("Normalise: frequency must be greater than 0 Hz.");
-  if (Number(doc.props.tolerance) < 0) bad("Tolerance can't be negative.");
-  return out;
-}
-
-/**
- * Evaluate a document and build the export text.
- * @param {object} doc
- * @param {string} [formatId] Export format, default "smaart-tf" (.crv). A spectrum document is always blocked.
- * @returns {{points: number[][], text: string|null, issues: {level: string, message: string}[]}}
- */
-export function buildCrv(doc, formatId = "smaart-tf") {
-  const adapter = getAdapter(doc.props.format === "smaart-spectrum" ? "smaart-spectrum" : formatId);
-  const merged = layerIssues(doc);
-  let points = [];
-  let thrown = null;
-  if (!merged.length) {
-    try {
-      points = evaluate(doc);
-    } catch (e) {
-      thrown = e.message;
-    }
-  }
-  for (const i of adapter.validate(doc, points)) {
-    if (!points.length && merged.length && /at least 2 points/.test(i.message)) continue; // already explained
-    if (!merged.some((m) => m.message === i.message)) merged.push(i);
-  }
-  if (thrown && !merged.some((i) => i.message.includes("dB/oct"))) merged.push({ level: "error", message: thrown });
-  const hasError = merged.some((i) => i.level === "error");
-  return { points, text: hasError ? null : adapter.write(doc, points), issues: merged };
-}
 
 // ------------------------------------------------------------------ DOM wiring
 /** Parse "12", "-3.5" or "3,5". Rejects "1,000", "1e3", "0x10" and empty text (returns NaN). */
@@ -90,19 +33,21 @@ function parseNum(s) {
 
 function startApp() {
   const $ = (id) => document.getElementById(id);
-  let doc = presets.loadAutosave() ?? newDoc();
-  let importMessages = [];
+  // "?fresh" in the address starts a new curve and forgets the autosave: the way out if a saved curve can't be opened.
+  const startFresh = /[?&]fresh(?:[=&]|$)/.test(location.search);
+  if (startFresh) { presets.clearAutosave(); history.replaceState(null, "", location.pathname + location.hash); }
+  let doc = (startFresh ? null : presets.loadAutosave()) ?? newDoc();
+  const lostAutosave = startFresh ? null : presets.lastAutosaveProblem();
+  let importMessages = startFresh ? ["Started a new curve: the autosaved one was ignored."]
+    : lostAutosave ? [`The autosaved curve couldn't be restored (${lostAutosave}), so a new curve was started.`] : [];
+  let shownMessages = ""; // the messages the notice already showed, so the next edit can clear them
   const expanded = new Set();
   const plot = createPlot($("plot"), { onDragStart: dragStart, onDrag: dragMove, onDragEnd: dragEnd, onNudge: nudge });
 
   // ---- undo / redo / autosave
-  const undoStack = [];
-  const redoStack = [];
-  let lastJson = JSON.stringify(doc);
+  const edits = createHistory({ start: JSON.stringify(doc), max: 100, coalesceMs: 800 });
   let dragging = false;
   let saveTimer = null;
-  let lastPushAt = 0;
-  let lastPushEl = null;
   /** A stable name for "the control being edited", or null if edits shouldn't be merged. */
   function coalesceKey(el) {
     if (!el) return null;
@@ -110,31 +55,23 @@ function startApp() {
     if (el.tagName === "INPUT" && ["text", "color", "range"].includes(el.type)) return el.id || el;
     return null;
   }
-  const MAX_UNDO = 100;
 
   /** Record the document in the undo history if it changed since the last call. */
   function track() {
     if (dragging) return;
     const json = JSON.stringify(doc);
-    if (json === lastJson) return;
+    if (json === edits.current()) return;
+    if (importMessages.length && JSON.stringify(importMessages) === shownMessages) { importMessages = []; noticeSig = ""; } // seen already: the edit moves on
     // Rapid edits of one control (typing, a colour or slider drag, arrow-key nudges) share one undo step.
-    const key = coalesceKey(document.activeElement);
-    if (!(key && key === lastPushEl && Date.now() - lastPushAt < 800)) {
-      undoStack.push(lastJson);
-      if (undoStack.length > MAX_UNDO) undoStack.shift();
-    }
-    lastPushAt = Date.now();
-    lastPushEl = key;
-    redoStack.length = 0;
-    lastJson = json;
+    edits.record(json, coalesceKey(document.activeElement), Date.now());
     scheduleSave();
   }
 
   let autosaveWarned = false;
   function saveNow() {
-    if (presets.autosave(lastJson) || autosaveWarned) return;
+    if (presets.autosave(edits.current()) || autosaveWarned) return;
     autosaveWarned = true;
-    importMessages.push("Autosave isn't available in this browser, so your work won't be restored after a reload. Use Presets > Save preset as JSON to keep it.");
+    importMessages.push(`Autosave isn't working (${presets.storageProblemText()}), so your work won't be restored after a reload. Use Presets > Save preset as JSON to keep it.`);
     noticeSig = "";
     renderNotice();
   }
@@ -155,22 +92,22 @@ function startApp() {
     const li = a && a.closest ? a.closest("#layers li") : null;
     const focus = li && a.dataset.action ? [li.dataset.id, a.dataset.action] : undefined;
     doc = JSON.parse(json);
-    lastJson = json;
-    lastPushEl = null;
+    importMessages = []; // a message such as "Press Undo to get your edits back" is spent once Undo or Redo is used
+    noticeSig = "";
     refreshAll(focus);
     scheduleSave();
   }
 
   function undo() {
-    if (dragging || !undoStack.length) return;
-    redoStack.push(lastJson);
-    restore(undoStack.pop());
+    if (dragging) return;
+    const json = edits.undo();
+    if (json !== null) restore(json);
   }
 
   function redo() {
-    if (dragging || !redoStack.length) return;
-    undoStack.push(lastJson);
-    restore(redoStack.pop());
+    if (dragging) return;
+    const json = edits.redo();
+    if (json !== null) restore(json);
   }
 
   function refreshAll(focus) {
@@ -187,14 +124,14 @@ function startApp() {
     const l = pointsLayer();
     if (!l || !l.points[i]) return;
     dragging = true;
-    dragBase = { db: l.points[i][1] };
+    dragBase = { db: l.points[i][1], hz: l.points[i][0] };
   }
   function dragMove(i, dDb, hz) {
     const l = pointsLayer();
     if (!dragging || !l || !l.points[i]) return;
     // On an inverted layer the plotted curve moves the opposite way to the stored value.
     l.points[i][1] = Math.round((dragBase.db + (l.invert === true ? -dDb : dDb)) * 100) / 100;
-    if (hz !== null) l.points[i][0] = hz;
+    l.points[i][0] = hz !== null ? hz : dragBase.hz; // without Shift the frequency stays exactly as it was typed
     if (expanded.has(l.id)) renderLayers();
     update();
   }
@@ -215,7 +152,7 @@ function startApp() {
   let uid = 0;
   // How the bell's width is typed: "q" or "bw" (octaves). A view setting kept in this browser only.
   let qMode = "q";
-  try { if (localStorage.getItem("tcb-qmode") === "bw") qMode = "bw"; } catch { /* storage unavailable */ }
+  if (getPref("tcb-qmode") === "bw") qMode = "bw";
 
   /** Text input bound to a number. `optional` lets an empty box mean null. */
   function numField(label, value, onSet, { optional = false, placeholder = "", check = null } = {}) {
@@ -352,6 +289,7 @@ function startApp() {
     add.type = "button";
     add.textContent = "Add point";
     add.addEventListener("click", () => {
+      if (totalPoints(doc) >= MAX_TOTAL_POINTS) { showNotice([`No more points can be added: a curve holds at most ${MAX_TOTAL_POINTS} points in total.`]); return; }
       const last = l.points[l.points.length - 1];
       const prev = l.points.length > 1 ? l.points[l.points.length - 2] : null;
       // New point: halfway (in log frequency) between the last two points, or an octave above the last.
@@ -393,7 +331,7 @@ function startApp() {
         body.append(numField("Gain (± dB, up to 60)", l.db, set("db")), numField("Centre frequency (Hz)", l.fc, set("fc")),
           selectField("Enter width as", [["q", "Q"], ["bw", "Bandwidth (octaves)"]], qMode, (v) => {
             qMode = v;
-            try { localStorage.setItem("tcb-qmode", v); } catch { /* storage unavailable */ }
+            setPref("tcb-qmode", v);
             renderLayers([l.id, "toggle"]);
           }), width);
         break;
@@ -726,10 +664,10 @@ function startApp() {
 
   // ---- plot zoom (a view setting, kept in this browser only)
   let zoom = null; // null = auto range, otherwise +/- dB from 15 to 40
-  try {
-    const saved = Number(localStorage.getItem("tcb-zoom"));
+  {
+    const saved = Number(getPref("tcb-zoom"));
     if (saved >= 15 && saved <= 40) zoom = saved;
-  } catch { /* storage unavailable */ }
+  }
   const applyZoomUi = () => {
     $("zoom-auto").checked = zoom === null;
     $("zoom").disabled = zoom === null;
@@ -738,7 +676,7 @@ function startApp() {
   };
   const setZoom = (z) => {
     zoom = z;
-    try { localStorage.setItem("tcb-zoom", z === null ? "" : String(z)); } catch { /* storage unavailable */ }
+    setPref("tcb-zoom", z === null ? "" : String(z));
     applyZoomUi();
     update();
   };
@@ -748,10 +686,10 @@ function startApp() {
 
   // ---- plot Y offset: slides the visible dB window by -20 to +20 dB (also a view setting)
   let yOffset = 0;
-  try {
-    const saved = Number(localStorage.getItem("tcb-yoff"));
+  {
+    const saved = Number(getPref("tcb-yoff"));
     if (Number.isFinite(saved) && Math.abs(saved) <= 20) yOffset = Math.round(saved);
-  } catch { /* storage unavailable */ }
+  }
   const applyYoffUi = () => {
     $("yoff").value = String(yOffset);
     $("yoff-val").textContent = `${yOffset > 0 ? "+" : yOffset < 0 ? "−" : ""}${Math.abs(yOffset)} dB`;
@@ -759,7 +697,7 @@ function startApp() {
   };
   const setYoff = (v) => {
     yOffset = Math.max(-20, Math.min(20, Math.round(v)));
-    try { localStorage.setItem("tcb-yoff", String(yOffset)); } catch { /* storage unavailable */ }
+    setPref("tcb-yoff", String(yOffset));
     applyYoffUi();
     update();
   };
@@ -769,7 +707,7 @@ function startApp() {
 
   // ---- layer ghosts: each enabled layer's own contribution drawn faintly behind the curve (a view setting)
   let ghostsOn = false;
-  try { ghostsOn = localStorage.getItem("tcb-ghosts") === "1"; } catch { /* storage unavailable */ }
+  ghostsOn = getPref("tcb-ghosts") === "1";
   const ghostHue = (index) => (index * 47 + 15) % 360;
   /** Colour stripe on a layer row that matches its ghost line. */
   function stripe(li, l, i) {
@@ -781,7 +719,7 @@ function startApp() {
   };
   $("btn-ghosts").addEventListener("click", () => {
     ghostsOn = !ghostsOn;
-    try { localStorage.setItem("tcb-ghosts", ghostsOn ? "1" : "0"); } catch { /* storage unavailable */ }
+    setPref("tcb-ghosts", ghostsOn ? "1" : "0");
     applyGhostsUi();
     document.querySelectorAll("#layers li[data-id]").forEach((li) => {
       const l = doc.layers.find((x) => x.id === li.dataset.id);
@@ -793,11 +731,11 @@ function startApp() {
 
   // ---- lines only: hide the point markers and drag handles on the plot (a view setting)
   let linesOnly = false;
-  try { linesOnly = localStorage.getItem("tcb-lines") === "1"; } catch { /* storage unavailable */ }
+  linesOnly = getPref("tcb-lines") === "1";
   $("hide-points").checked = linesOnly;
   $("hide-points").addEventListener("change", () => {
     linesOnly = $("hide-points").checked;
-    try { localStorage.setItem("tcb-lines", linesOnly ? "1" : "0"); } catch { /* storage unavailable */ }
+    setPref("tcb-lines", linesOnly ? "1" : "0");
     update();
   });
   $("g-simplify").addEventListener("change", () => {
@@ -810,6 +748,13 @@ function startApp() {
   });
 
   let noticeSig = "";
+  /** Show these messages in the notice area (replacing any that are there). */
+  function showNotice(messages) {
+    importMessages = messages;
+    noticeSig = "";
+    renderNotice();
+  }
+
   function renderNotice() {
     const msgs = [...importMessages];
     const isSpectrum = doc.props.format === "smaart-spectrum";
@@ -817,6 +762,7 @@ function startApp() {
     const sig = JSON.stringify([msgs, isSpectrum]);
     if (sig === noticeSig) return;
     noticeSig = sig;
+    shownMessages = JSON.stringify(importMessages);
     const host = $("notice");
     host.replaceChildren();
     host.hidden = msgs.length === 0;
@@ -855,7 +801,7 @@ function startApp() {
     refreshTitles();
     renderNotice();
     undoUi();
-    const { points, text, issues } = buildCrv(doc, exportFormat);
+    const { points, ok, issues } = buildCrv(doc, exportFormat, { withText: false }); // the text is written only on Export
     let handles = [];
     const hl = pointsLayer();
     const hint = $("handle-hint");
@@ -882,18 +828,20 @@ function startApp() {
         : "No curve to show.",
     });
     $("h-table").textContent = `Exported points (${points.length})`;
-    const tbody = $("points-table").tBodies[0];
-    const rows = document.createDocumentFragment();
-    for (const [f, g] of points) {
-      const tr = document.createElement("tr");
-      for (const v of [fmt6(f), fmt6(g)]) {
-        const td = document.createElement("td");
-        td.textContent = v;
-        tr.append(td);
+    if (!dragging) { // a drag redraws the table once, when it ends
+      const tbody = $("points-table").tBodies[0];
+      const rows = document.createDocumentFragment();
+      for (const [f, g] of points) {
+        const tr = document.createElement("tr");
+        for (const v of [fmt6(f), fmt6(g)]) {
+          const td = document.createElement("td");
+          td.textContent = v;
+          tr.append(td);
+        }
+        rows.append(tr);
       }
-      rows.append(tr);
+      tbody.replaceChildren(rows);
     }
-    tbody.replaceChildren(rows);
     const list = $("validation");
     list.replaceChildren();
     for (const i of issues) {
@@ -902,26 +850,26 @@ function startApp() {
       li.textContent = i.message;
       list.append(li);
     }
-    if (text) {
+    if (ok) {
       const li = document.createElement("li");
       li.className = "ok";
       li.textContent = "Ready to export.";
       list.append(li);
     }
-    $("btn-export").disabled = !text;
+    $("btn-export").disabled = !ok;
   }
 
   function undoUi() {
-    $("btn-undo").disabled = !undoStack.length;
-    $("btn-redo").disabled = !redoStack.length;
+    $("btn-undo").disabled = !edits.canUndo();
+    $("btn-redo").disabled = !edits.canRedo();
   }
 
   // ---- export format (a view setting kept in this browser only)
   let exportFormat = "smaart-tf";
-  try {
-    const saved = localStorage.getItem("tcb-export");
+  {
+    const saved = getPref("tcb-export");
     if (writableAdapters().some((a) => a.id === saved)) exportFormat = saved;
-  } catch { /* storage unavailable */ }
+  }
   const sel = $("export-format");
   for (const a of writableAdapters()) {
     const o = document.createElement("option");
@@ -937,7 +885,7 @@ function startApp() {
   applyExportUi();
   sel.addEventListener("change", () => {
     exportFormat = sel.value;
-    try { localStorage.setItem("tcb-export", exportFormat); } catch { /* storage unavailable */ }
+    setPref("tcb-export", exportFormat);
     applyExportUi();
     update();
   });
@@ -955,18 +903,20 @@ function startApp() {
   }
 
   // ---- properties
-  const bindNum = (id, set, { optional = false } = {}) => {
-    let lastGood = $(id).value;
+  /**
+   * A text box bound to a number in the document. `get` gives the value the document holds now, so a box that was
+   * typed into badly goes back to what the document really has, even after a preset, undo or shared link changed it.
+   */
+  const bindNum = (id, set, get, { optional = false, check = null } = {}) => {
     $(id).addEventListener("blur", () => {
-      if ($(id).getAttribute("aria-invalid")) { $(id).value = lastGood; $(id).removeAttribute("aria-invalid"); }
+      if ($(id).getAttribute("aria-invalid")) { $(id).value = String(get() ?? ""); $(id).removeAttribute("aria-invalid"); }
     });
     $(id).addEventListener("input", () => {
       const raw = $(id).value.trim();
       const n = parseNum(raw);
       if (raw === "" && optional) { $(id).removeAttribute("aria-invalid"); set(null); }
-      else if (Number.isFinite(n)) { $(id).removeAttribute("aria-invalid"); set(n); }
+      else if (Number.isFinite(n) && (!check || check(n))) { $(id).removeAttribute("aria-invalid"); set(n); }
       else { $(id).setAttribute("aria-invalid", "true"); return; }
-      lastGood = $(id).value;
       update();
     });
   };
@@ -989,13 +939,13 @@ function startApp() {
   $("p-line").addEventListener("change", () => { doc.props.line = Number($("p-line").value); update(); });
   $("p-show").addEventListener("change", () => { doc.props.show = $("p-show").checked ? 1 : 0; update(); });
   $("p-usetol").addEventListener("change", () => { doc.props.useTolerance = $("p-usetol").checked ? 1 : 0; update(); });
-  bindNum("p-tol", (n) => { doc.props.tolerance = n; });
-  bindNum("p-offset", (n) => { doc.props.offset = n; }, { optional: true });
-  bindNum("n-at", (n) => { doc.normalise.at = n; });
-  bindNum("g-eps", (n) => { doc.grid.epsilon = n; });
+  bindNum("p-tol", (n) => { doc.props.tolerance = n; }, () => doc.props.tolerance);
+  bindNum("p-offset", (n) => { doc.props.offset = n; }, () => doc.props.offset, { optional: true });
+  bindNum("n-at", (n) => { doc.normalise.at = n; }, () => doc.normalise.at);
+  bindNum("g-eps", (n) => { doc.grid.epsilon = n; }, () => doc.grid.epsilon ?? 0.1);
   // Each trim has a tick box: ticked, the number in the box is the trim; unticked, there is no trim.
   for (const [id, key, def] of TRIMS) {
-    bindNum(id, (n) => { doc.grid[key] = n; $(`${id}-on`).checked = true; }); // typing a number switches the trim on
+    bindNum(id, (n) => { doc.grid[key] = n; $(`${id}-on`).checked = true; }, () => doc.grid[key] ?? def); // typing a number switches the trim on
     $(`${id}-on`).addEventListener("change", () => {
       if (!$(`${id}-on`).checked) delete doc.grid[key];
       else {
@@ -1069,9 +1019,7 @@ function startApp() {
         impDlg.showModal();
       }
     } catch (e) {
-      importMessages = [`Couldn't import ${file.name}: ${e.message}`];
-      noticeSig = "";
-      renderNotice();
+      showNotice([`Couldn't import ${file.name}: ${e.message}`]);
     }
   }
   let pendingImport = null;
@@ -1100,9 +1048,7 @@ function startApp() {
       noticeSig = "";
       refreshAll();
     } catch (e) {
-      importMessages = [`Couldn't add ${p.name}: ${e.message}`];
-      noticeSig = "";
-      renderNotice();
+      showNotice([`Couldn't add ${p.name}: ${e.message}`]);
     }
   });
   $("imp-cancel").addEventListener("click", () => impDlg.close());
@@ -1177,7 +1123,7 @@ function startApp() {
       const name = input.value.trim();
       if (!name) { status_("Give the preset a name.", input.value); return; }
       if (presets.hasPreset(name) && !window.confirm(`Replace the saved preset "${name}"?`)) return;
-      status_(presets.savePreset(name, doc) ? `Saved "${name}".` : "Couldn't save: this browser is blocking storage.", name);
+      status_(presets.savePreset(name, doc) ? `Saved "${name}".` : `Couldn't save: ${presets.storageProblemText()}.`, name);
     });
     wrap.append(lab, input);
     body.append(wrap, save);
@@ -1212,8 +1158,8 @@ function startApp() {
       $("presets-status").focus();
     }
   });
-  window.addEventListener("pagehide", () => presets.autosave(lastJson));
-  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") presets.autosave(lastJson); });
+  window.addEventListener("pagehide", () => presets.autosave(edits.current()));
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "hidden") presets.autosave(edits.current()); });
   // ---- reference trace (SPEC §10): a curve drawn behind the target, never exported
   for (const n of TRACE_SMOOTHINGS) {
     const o = document.createElement("option");
@@ -1252,13 +1198,11 @@ function startApp() {
   $("tr-show").addEventListener("change", () => { if (doc.template) { doc.template.show = $("tr-show").checked; update(); } });
   $("tr-norm").addEventListener("change", () => { if (doc.template) { doc.template.normalise = $("tr-norm").checked; update(); } });
   $("tr-smooth").addEventListener("change", () => { if (doc.template) { doc.template.smooth = Number($("tr-smooth").value); update(); } });
-  $("tr-offset").addEventListener("input", () => {
-    const v = parseNum($("tr-offset").value);
-    if (doc.template && Number.isFinite(v) && Math.abs(v) <= TRACE_OFFSET_LIMIT) { doc.template.offset = v; update(); }
-  });
+  bindNum("tr-offset", (n) => { if (doc.template) doc.template.offset = n; }, () => doc.template?.offset ?? 0, { check: (v) => Math.abs(v) <= TRACE_OFFSET_LIMIT });
   $("tr-remove").addEventListener("click", () => { delete doc.template; update(); $("btn-trace").focus(); });
   $("tr-layer").addEventListener("click", () => {
     if (!doc.template) return;
+    if (totalPoints(doc) + doc.template.points.length > MAX_TOTAL_POINTS) { showNotice([`Adding the trace would take the curve past ${MAX_TOTAL_POINTS} points in total. Delete a Points layer first.`]); return; }
     const l = newLayer("points");
     l.points = traceCurve(doc.template);
     l.label = doc.template.name || "Trace";
@@ -1288,23 +1232,45 @@ function startApp() {
       note.textContent = `Couldn't make a link: ${e.message}`;
     }
   });
-  // a link opened from elsewhere loads its curve, then clears the address so a reload keeps your own edits
-  (async () => {
+  // A link opened from elsewhere (or pasted into this tab) loads its curve, then clears the address so a reload keeps
+  // your own edits. If you already have a curve open it asks first.
+  const linkDlg = $("dlg-link");
+  let pendingLink = null;
+  async function openLink() {
     const m = /^#d=(.+)$/.exec(location.hash);
     if (!m) return;
+    const hash = location.hash;
+    let shared;
     try {
-      const shared = await decodeShare(m[1]);
-      history.replaceState(null, "", location.pathname + location.search);
+      shared = await decodeShare(m[1]);
+    } catch (e) {
+      if (location.hash === hash) history.replaceState(null, "", location.pathname + location.search);
+      showNotice([`Couldn't open that link: ${e.message}`]);
+      return;
+    }
+    if (location.hash === hash) history.replaceState(null, "", location.pathname + location.search);
+    if (dragging) return; // a point is being dragged: never swap the document under it
+    if (isBlank(doc) && !doc.template) {
       importMessages = ["Opened a shared curve from a link."];
       noticeSig = "";
       setDoc(shared);
-    } catch (e) {
-      history.replaceState(null, "", location.pathname + location.search);
-      importMessages = [`Couldn't open that link: ${e.message}`];
-      noticeSig = "";
-      renderNotice();
+    } else {
+      pendingLink = shared;
+      if (!linkDlg.open) linkDlg.showModal();
     }
-  })();
+  }
+  $("link-open").addEventListener("click", () => {
+    const shared = pendingLink;
+    linkDlg.close();
+    if (!shared) return;
+    importMessages = ["Opened a shared curve from a link. Press Undo to get your curve back."];
+    noticeSig = "";
+    setDoc(shared);
+  });
+  $("link-keep").addEventListener("click", () => linkDlg.close());
+  linkDlg.addEventListener("close", () => { pendingLink = null; });
+  window.addEventListener("hashchange", openLink);
+  openLink();
 
   $("btn-export").addEventListener("click", () => {
     const { text } = buildCrv(doc, exportFormat);
@@ -1313,7 +1279,7 @@ function startApp() {
   });
   const THEMES = ["auto", "dark", "light"];
   let theme = "auto";
-  try { theme = THEMES.includes(localStorage.getItem("tcb-theme")) ? localStorage.getItem("tcb-theme") : "auto"; } catch { /* storage unavailable */ }
+  theme = THEMES.includes(getPref("tcb-theme")) ? getPref("tcb-theme") : "auto";
   const applyTheme = () => {
     if (theme === "auto") document.documentElement.removeAttribute("data-theme");
     else document.documentElement.dataset.theme = theme;
@@ -1321,7 +1287,7 @@ function startApp() {
   };
   $("btn-theme").addEventListener("click", () => {
     theme = THEMES[(THEMES.indexOf(theme) + 1) % THEMES.length];
-    try { localStorage.setItem("tcb-theme", theme); } catch { /* storage unavailable */ }
+    setPref("tcb-theme", theme);
     applyTheme();
   });
   applyTheme();
@@ -1346,10 +1312,29 @@ function startApp() {
     setTimeout(() => { btn.textContent = "Copy as text"; }, 1500);
   });
 
-  renderProps();
-  renderGroups();
-  renderLayers();
-  update();
+  try {
+    renderProps();
+    renderGroups();
+    renderLayers();
+    update();
+  } catch (e) {
+    // an autosaved curve that can't be drawn would fail again on every reload: forget it and start a new curve
+    presets.clearAutosave();
+    doc = newDoc();
+    edits.adopt(JSON.stringify(doc));
+    importMessages = [`The autosaved curve couldn't be opened (${e.message}), so a new curve was started. Add ?fresh to the address to skip the autosave if this happens again.`];
+    noticeSig = "";
+    renderProps();
+    renderGroups();
+    renderLayers();
+    update();
+  }
 }
 
-if (typeof document !== "undefined") startApp();
+if (typeof document !== "undefined") {
+  startApp();
+  // Offline use: keep a copy of the app for next time (only where browsers allow it: https or localhost).
+  if ("serviceWorker" in navigator && (location.protocol === "https:" || location.hostname === "localhost" || location.hostname === "127.0.0.1")) {
+    navigator.serviceWorker.register("sw.js").catch(() => { /* the app works the same without it */ });
+  }
+}

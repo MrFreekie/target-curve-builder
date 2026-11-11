@@ -1,7 +1,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { BUILT_IN_PRESETS, SMPTE_ST202_TABLE_1 } from "../js/presets.js";
-import { buildCrv } from "../js/app.js";
+import { buildCrv } from "../js/build.js";
 import { pos } from "../js/curve.js";
 
 // SMPTE ST 202:2010, Table 1 (medium sized theatre): 1/3-octave centre frequency Hz -> level dB.

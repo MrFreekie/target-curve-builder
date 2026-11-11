@@ -83,12 +83,26 @@ export function filterDb(f, fc, type, slope, mode) {
  * @returns {number}
  */
 export function interpPoints(f, points) {
-  const pts = [...points].sort((a, b) => a[0] - b[0]);
+  // Sort only when needed (the editor keeps them in order), so a long list isn't copied for every frequency.
+  let sorted = true;
+  for (let i = 1; i < points.length; i++) if (points[i][0] < points[i - 1][0]) { sorted = false; break; }
+  const pts = sorted ? points : [...points].sort((a, b) => a[0] - b[0]);
   if (!pts.length) return 0;
   const x = pos(f);
   if (x <= pos(pts[0][0])) return pts[0][1];
   if (x >= pos(pts[pts.length - 1][0])) return pts[pts.length - 1][1];
-  for (let i = 0; i < pts.length - 1; i++) {
+  // Skip the segments that cannot hold f. pos() equals log2(f / 1000) except at the nominal labels, which it moves by
+  // under 0.03 octave, so a segment that ends more than 0.1 octave below f can't match: find the first point that
+  // is not that far below f (binary search on Hz), start one segment earlier, and scan forward in the usual order.
+  const reach = f * 2 ** -0.1;
+  let lo = 0;
+  let hi = pts.length;
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (pts[mid][0] < reach) lo = mid + 1; else hi = mid;
+  }
+  const start = Math.max(0, lo - 1);
+  for (let i = start; i < pts.length - 1; i++) {
     const x0 = pos(pts[i][0]);
     const x1 = pos(pts[i + 1][0]);
     if (x >= x0 && x <= x1) {

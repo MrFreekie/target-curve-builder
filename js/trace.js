@@ -26,7 +26,9 @@ function binTo48(points) {
     b.n += 1;
     bins.set(k, b);
   }
-  return [...bins.entries()].sort((a, b) => a[0] - b[0]).map(([, b]) => [round6(2 ** (b.lf / b.n)), round6(b.g / b.n)]);
+  const out = [...bins.entries()].sort((a, b) => a[0] - b[0]).map(([, b]) => [round6(2 ** (b.lf / b.n)), round6(b.g / b.n)]);
+  // rounding to 6 decimals can turn a tiny frequency into 0 or into its neighbour's: keep positive, distinct ones only
+  return out.filter((p, i) => p[0] > 0 && (i === 0 || p[0] !== out[i - 1][0]));
 }
 
 /**
