@@ -801,7 +801,11 @@ function startApp() {
     update();
   });
   $("g-simplify").addEventListener("change", () => {
-    if ($("g-simplify").checked) doc.grid.simplify = true; else delete doc.grid.simplify;
+    if ($("g-simplify").checked) {
+      doc.grid.simplify = true;
+      if (doc.grid.epsilon === undefined) doc.grid.epsilon = 0.02; // a finer start than the 0.1 dB fallback, so a fine grid shows its detail
+      $("g-eps").value = String(doc.grid.epsilon);
+    } else delete doc.grid.simplify;
     update();
   });
 
