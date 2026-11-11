@@ -43,9 +43,12 @@ input[aria-invalid="true"] { border-color: var(--danger); outline: 2px solid var
 .field input[type="text"], .field select { width: 100%; }
 .field input[type="checkbox"] { justify-self: start; }
 button.wide { width: 100%; margin-bottom: 8px; text-align: left; }
+[hidden] { display: none !important; } /* so display rules on a class never show a hidden element */
 button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
 .brand { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
 .name-field { grid-template-columns: auto 1fr; }
+.colour-row { display: flex; gap: 6px; align-items: center; }
+.iconbtn { display: inline-flex; align-items: center; justify-content: center; width: 40px; min-height: 40px; padding: 0; }
 .name-row { display: flex; gap: 6px; min-width: 0; }
 .name-row input { flex: 1; min-width: 0; width: auto; }
 .name-row button { white-space: nowrap; font-size: 0.85rem; }
@@ -53,7 +56,7 @@ button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0
 .tabitem { display: inline-flex; }
 .tabitem .tab { border-radius: 8px 0 0 0; }
 .eye { display: inline-flex; align-items: center; min-height: 44px; min-width: 40px; justify-content: center; padding: 6px 8px; border-radius: 0 8px 0 0; border-bottom: none; background: var(--panel2); color: var(--muted); }
-.eye[aria-pressed="true"] { color: var(--text); }
+.eye[aria-pressed="true"] { color: var(--text); border-color: var(--border); box-shadow: none; }
 .tab { display: inline-flex; align-items: center; gap: 6px; min-height: 44px; padding: 6px 12px; max-width: 10em; border-radius: 8px 8px 0 0; border-bottom: none; background: var(--panel2); color: var(--muted); }
 .tab .tab-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tab .tab-count { font-size: 0.75rem; opacity: 0.8; }
@@ -68,8 +71,6 @@ button[aria-pressed="true"] { border-color: var(--accent); box-shadow: inset 0 0
 .layers .empty { color: var(--muted); padding: 10px 6px; list-style: none; }
 .add { margin-top: 8px; }
 .add select { flex: 1; min-width: 0; }
-.suggest { margin: -2px 0 8px; }
-.suggest button { width: 100%; text-align: left; font-size: 0.85rem; min-height: 40px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .row-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 8px; }
 .row-head h2 { margin: 0; }
 .add { display: flex; gap: 6px; }
