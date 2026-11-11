@@ -1,6 +1,6 @@
 // Document model: defaults, layer factories, validation of loaded documents, and import.
 // Pure module: no DOM access, importable from Node.
-import { FILTERS, interpPoints } from "./layers.js";
+import { FILTERS, LAYER_LIMITS, interpPoints } from "./layers.js";
 import { detectFormat } from "./formats/index.js";
 import { sanitiseFileName } from "./formats/smaart.js";
 
@@ -9,7 +9,12 @@ export const LAYER_KINDS = {
   lfTilt: "LF tilt",
   hfTilt: "HF tilt",
   fullTilt: "Full-spectrum tilt",
-  subBoost: "Sub boost (LPF shelf)",
+  subBoost: "Low shelf (sub boost)",
+  hiShelf: "High shelf",
+  bell: "Bell (peak or notch)",
+  hill: "Hill (haystack bump)",
+  rHpf: "Resonant HPF (2nd order)",
+  rLpf: "Resonant LPF (2nd order)",
   hpf: "HPF",
   lpf: "LPF",
   gain: "Gain",
@@ -55,6 +60,11 @@ export function newLayer(kind) {
     case "fullTilt": return { ...base, dbPerOct: 1, pivot: 1000 };
     case "hfTilt": return { ...base, dbPerOct: 1.5, corner: 4000 };
     case "subBoost": return { ...base, fc: 60, type: "LR", slope: 24, db: 6 };
+    case "hiShelf": return { ...base, fc: 8000, type: "BW", slope: 12, db: -3 };
+    case "bell": return { ...base, fc: 1000, q: 1, db: 3 };
+    case "hill": return { ...base, fc: 60, width: 2, db: 6 };
+    case "rHpf": return { ...base, fc: 40, q: 1 };
+    case "rLpf": return { ...base, fc: 16000, q: 1 };
     case "hpf": return { ...base, fc: 32, type: "LR", slope: 48 };
     case "lpf": return { ...base, fc: 16000, type: "LR", slope: 24 };
     default: return { ...base, kind: "gain", db: 0 };
@@ -81,6 +91,11 @@ function loadPoints(list) {
   });
 }
 
+function ranged(v, [lo, hi], what) {
+  if (v < lo || v > hi) throw new Error(`Invalid ${what}: it must be between ${lo} and ${hi}.`);
+  return v;
+}
+
 function loadLayer(l) {
   if (!isObj(l) || typeof l.kind !== "string" || !Object.hasOwn(LAYER_KINDS, l.kind)) throw new Error("Unknown layer type.");
   const out = { id: newId(), kind: l.kind, on: l.on !== false && l.on !== 0 };
@@ -100,11 +115,28 @@ function loadLayer(l) {
       out.corner = num(l.corner, "corner", { positive: true });
       break;
     case "gain": out.db = num(l.db, "gain"); break;
+    case "bell":
+      out.fc = num(l.fc, "centre frequency", { positive: true });
+      out.q = ranged(num(l.q, "Q"), LAYER_LIMITS.q, "Q");
+      out.db = ranged(num(l.db, "gain"), LAYER_LIMITS.db, "gain");
+      break;
+    case "hill":
+      out.fc = num(l.fc, "centre frequency", { positive: true });
+      out.width = ranged(num(l.width, "width"), LAYER_LIMITS.width, "width");
+      out.db = ranged(num(l.db, "gain"), LAYER_LIMITS.db, "gain");
+      break;
+    case "rHpf":
+    case "rLpf":
+      out.fc = num(l.fc, "corner frequency", { positive: true });
+      out.q = ranged(num(l.q, "Q"), LAYER_LIMITS.resonantQ, "Q");
+      break;
     default: {
-      if (l.kind === "subBoost") out.db = num(l.db, "boost");
+      const shelf = l.kind === "subBoost" || l.kind === "hiShelf";
+      if (shelf) out.db = num(l.db, "shelf gain");
       out.fc = num(l.fc, "corner frequency", { positive: true });
       const filter = typeof l.type === "string" && Object.hasOwn(FILTERS, l.type) ? FILTERS[l.type] : undefined;
       if (!filter) throw new Error(`Unknown filter type ${l.type}.`);
+      if (shelf && filter.shelfSafe === false) throw new Error(`${filter.label} can't be used for a shelf: its passband ripples.`);
       out.type = l.type;
       out.slope = num(l.slope, "filter slope");
       if (!filter.allowedSlopes.includes(out.slope)) throw new Error(`${filter.label} doesn't allow ${out.slope} dB/oct.`);

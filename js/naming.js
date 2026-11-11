@@ -27,6 +27,16 @@ function parts(l) {
       const flat = l.points.every((p) => p[1] === l.points[0][1]);
       return flat && !l.points[0]?.[1] ? [] : [flat ? `Flat${n(l.points[0][1])}dB` : `Pts${l.points.length}`];
     }
+    case "hiShelf":
+      return l.db ? [`HiShelf${l.db > 0 ? "+" : ""}${n(l.db)}dB_${n(l.fc)}Hz_${l.type}${n(l.slope)}`] : [];
+    case "bell":
+      return l.db ? [`Bell${l.db > 0 ? "+" : ""}${n(l.db)}dB_${n(l.fc)}Hz_Q${n(l.q)}`] : [];
+    case "hill":
+      return l.db ? [`Hill${l.db > 0 ? "+" : ""}${n(l.db)}dB_${n(l.fc)}Hz_${n(l.width)}oct`] : [];
+    case "rHpf":
+      return [`RHPF${n(l.fc)}_Q${n(l.q)}`];
+    case "rLpf":
+      return [`RLPF${n(l.fc)}_Q${n(l.q)}`];
     case "subBoost":
       return l.db ? [`Sub${l.db > 0 ? "+" : ""}${n(l.db)}dB_${n(l.fc)}Hz_${l.type}${n(l.slope)}`] : [];
     case "hpf":
@@ -46,7 +56,7 @@ function parts(l) {
  */
 export function suggestName(doc) {
   const on = doc.layers.filter((l) => l.on !== false && l.on !== 0);
-  const order = { points: 0, fullTilt: 1, lfTilt: 1, hfTilt: 2, gain: 3, subBoost: 3.5, hpf: 4, lpf: 5 };
+  const order = { points: 0, fullTilt: 1, lfTilt: 1, hfTilt: 2, gain: 3, bell: 3.2, hill: 3.3, subBoost: 3.5, hiShelf: 3.6, hpf: 4, rHpf: 4.5, lpf: 5, rLpf: 5.5 };
   const sorted = [...on].sort((a, b) => (order[a.kind] ?? 9) - (order[b.kind] ?? 9));
   const name = sorted.flatMap(parts).join("_");
   return name || "Flat";

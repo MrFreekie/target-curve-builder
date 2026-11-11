@@ -96,8 +96,11 @@ Parameters: `fc` (Hz), `type`, `slope` (dB/oct, nominal). `r = fc/f` for a high-
 
 | type | allowed slopes | magnitude (dB) | at fc |
 |---|---|---|---|
-| `BW` Butterworth, order n = slope/6 | 6, 12, 18, 24, 30, 36, 42, 48 | `−10·log10(1 + r^(2n))` | −3.0103 |
-| `LR` Linkwitz-Riley = BW(n/2) squared, n = slope/6 | 12, 24, 36, 48 | `−20·log10(1 + r^n)` | −6.0206 |
+| `BW` Butterworth, order n = slope/6 | 6, 12, 18, 24, 30, 36, 42, 48, 72, 96 | `−10·log10(1 + r^(2n))` | −3.0103 |
+| `LR` Linkwitz-Riley = BW(n/2) squared, n = slope/6 | 12, 24, 36, 48, 72, 96 | `−20·log10(1 + r^n)` | −6.0206 |
+
+| `BS` Bessel, order n = slope/6 (§4.4b) | 6, 12, 18, 24, 30, 36, 42, 48 | see §4.4b | -3.0103 |
+| `CH1` Chebyshev type I, 1 dB ripple, order n = slope/6 (§4.4c) | 6, 12, 18, 24, 30, 36, 42, 48 | see §4.4c | -1.0000 |
 
 - **Magnitude only.** Phase is not part of a target curve.
 - **True slope:** a "48 dB/oct" filter's real stop-band slope is 8 × 6.0206 = 48.165 dB/oct. Tests must expect that, not exactly 48.
@@ -108,6 +111,22 @@ Parameters: `fc` (Hz), `type`, `slope` (dB/oct, nominal). `r = fc/f` for a high-
 Added after v1.0.0. Boosts or cuts everything below a low-pass corner. Parameters: `db` (± dB), `fc` (Hz), `type` and `slope` as for filters (§4.4, same allowed slopes).
 
 `value(f) = db * M(f)`, where `M(f)` is the **linear** magnitude of the low-pass filter: `M = 10^(lpfDb(f, fc, type, slope) / 20)`. It is 1 far below `fc` and 0 far above, so the full `db` is reached well below the corner. At `fc` the Linkwitz-Riley value is half of `db` (M = 0.5), the Butterworth value is 0.7071 of `db`. Closed forms with `r = f/fc`, `n = slope/6`: LR `M = 1/(1 + r^n)`, BW `M = 1/sqrt(1 + r^(2n))`. Frequencies use Hz, like filters. A negative `db` is a cut, the exact mirror image. Magnitude only: this is not a parallel-summed filter, so phase doesn't change the result. Combine with an HPF layer for the haystack hump. `fc` is a layer corner for the "Breakpoints only" grid (§3.4).
+
+### 4.4b Bessel filter type (`BS`)
+Added after v1.0.0. Order n = slope/6 (1 to 8). `r = fc/f` for a high-pass, `f/fc` for a low-pass. With the reverse Bessel polynomial `B_n(s) = sum_k a_k s^k`, `a_k = (2n-k)! / (2^(n-k) k! (n-k)!)`: `|H(r)| = a_0 / |B_n(j w3 r)|` in linear terms, so dB = `-20 log10(|B_n(j w3 r)| / a_0)`. `w3` is the number that puts the response at -3.0103 dB at r = 1 (found numerically per order). Order 1 equals Butterworth 6; order 2 has `w3^2 = (-3 + sqrt(45)) / 2` and `|H|^2 = 9 / ((3 - x^2)^2 + 9 x^2)` with `x = w3 r`. The stop-band slope is n x 6.0206 dB/oct.
+
+### 4.4c Chebyshev type I filter type (`CH1`)
+Added after v1.0.0. Order n = slope/6 (1 to 8), fixed 1 dB passband ripple. `r` as in §4.4b. `e^2 = 10^(0.1) - 1`, `T_n` the Chebyshev polynomial (`cos(n acos r)` for |r| <= 1, `cosh(n acosh r)` above): dB = `-10 log10(1 + e^2 T_n(r)^2)`. `fc` is the edge of the ripple band, so the value at `fc` is -1 dB for every order. Even orders sit at -1 dB at r = 0, odd orders at 0 dB. The stop-band slope is n x 6.0206 dB/oct.
+
+### 4.4d High shelf (`kind: "hiShelf"`)
+Added after v1.0.0. Parameters `db`, `fc`, `type`, `slope` as for §4.4a. `value(f) = db * M(f)` with `M` the **linear** magnitude of the matching **high-pass** (`r = fc/f`): 1 far above `fc`, 0 far below, half (LR) or 0.7071 (BW) of `db` at `fc`. The low shelf is §4.4a (kind `subBoost`). **Shelves accept Butterworth, Linkwitz-Riley and Bessel only:** Chebyshev (§4.4c) is refused because its passband ripples between 0.891 and 1 of `db`, so the shelf would not reach the full gain.
+
+### 4.4e Bell, resonant 2nd-order filters and hill
+Added after v1.0.0. All are magnitude only, with the real frequency in Hz, `x = f/fc`.
+- **Bell** (`kind: "bell"`: `fc`, `q` 0.1 to 50, `db` -60 to +60): `A = 10^(db/40)`, `|H|^2 = ((1-x^2)^2 + (x A/Q)^2) / ((1-x^2)^2 + (x/(A Q))^2)`, dB = `10 log10 |H|^2`. Exactly `db` at `fc`, 0 far away, symmetric in log frequency, a cut is the mirror of a boost. Low Q is wide; a deep cut with high Q is a notch, and with low Q a band-stop.
+- **Resonant low-pass / high-pass** (`kind: "rLpf"` / `"rHpf"`: `fc`, `q` 0.1 to 20): low-pass `|H|^2 = 1/((1-x^2)^2 + (x/Q)^2)`, high-pass the same times `x^4`. `q = 1/sqrt(2)` (0.70711) equals Butterworth 12 (typing 0.7071 differs by under 0.0001 dB); above that the response peaks near `fc`, `20 log10 Q` at `fc`.
+- **Hill** (`kind: "hill"`: `fc`, `width` 0.1 to 10 octaves, `db` -60 to +60): `value = db * 2^(-4 (log2(f/fc) / width)^2)`. Full `db` at `fc`, half at `width/2` octaves either side, so `width` is the full width at half height. Uses the true log of the frequency ratio, not `pos()`.
+- `fc` of each of these is a layer corner for §3.4.
 
 ### 4.5 Defaults for a new document
 - **Layers:** `points` (`[[20,0],[20000,0]]`, on), `lfTilt` (3 dB/oct, pivot 1 kHz, off), `fullTilt` (off), `hfTilt` (off), `hpf` (off), `lpf` (off).

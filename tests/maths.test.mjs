@@ -141,8 +141,9 @@ test("filter registry exposes BW and LR with allowedSlopes and magnitudeDb", () 
     assert.ok(Array.isArray(FILTERS[id].allowedSlopes));
     assert.equal(typeof FILTERS[id].magnitudeDb, "function");
   }
-  assert.deepEqual(FILTERS.LR.allowedSlopes, [12, 24, 36, 48]);
-  assert.deepEqual(FILTERS.BW.allowedSlopes, [6, 12, 18, 24, 30, 36, 42, 48]);
+  // 72 and 96 dB/oct were added after v1.0.0 for near brick-wall edges (SPEC §4.4)
+  assert.deepEqual(FILTERS.LR.allowedSlopes, [12, 24, 36, 48, 72, 96]);
+  assert.deepEqual(FILTERS.BW.allowedSlopes, [6, 12, 18, 24, 30, 36, 42, 48, 72, 96]);
 });
 
 // ---- disabled layers

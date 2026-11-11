@@ -1,5 +1,9 @@
 // Pure layer maths and the filter registry. No DOM access. See docs/SPEC.md §4.
 import { pos } from "./curve.js";
+import { bellDb, resonantDb, hillDb, besselDb, chebyshevDb } from "./eq.js";
+
+/** Allowed ranges for layer parameters (SPEC §4.4b to §4.4e). */
+export const LAYER_LIMITS = { q: [0.1, 50], resonantQ: [0.1, 20], width: [0.1, 10], db: [-60, 60] };
 
 /**
  * Filter registry. Add a filter type by adding one entry.
@@ -9,23 +13,43 @@ export const FILTERS = {
   BW: {
     id: "BW",
     label: "Butterworth",
-    allowedSlopes: [6, 12, 18, 24, 30, 36, 42, 48],
+    allowedSlopes: [6, 12, 18, 24, 30, 36, 42, 48, 72, 96],
     magnitudeDb(f, fc, slope, mode) {
       checkSlope(this, slope);
       const n = slope / 6;
       const r = mode === "hp" ? fc / f : f / fc;
-      return -10 * Math.log10(1 + r ** (2 * n));
+      // Above the corner use the log form so a huge ratio can't overflow to -Infinity.
+      return r > 1 ? -10 * (2 * n * Math.log10(r) + Math.log10(1 + r ** (-2 * n))) : -10 * Math.log10(1 + r ** (2 * n));
     },
   },
   LR: {
     id: "LR",
     label: "Linkwitz-Riley",
-    allowedSlopes: [12, 24, 36, 48],
+    allowedSlopes: [12, 24, 36, 48, 72, 96],
     magnitudeDb(f, fc, slope, mode) {
       checkSlope(this, slope);
       const n = slope / 6;
       const r = mode === "hp" ? fc / f : f / fc;
-      return -20 * Math.log10(1 + r ** n);
+      return r > 1 ? -20 * (n * Math.log10(r) + Math.log10(1 + r ** -n)) : -20 * Math.log10(1 + r ** n);
+    },
+  },
+  BS: {
+    id: "BS",
+    label: "Bessel",
+    allowedSlopes: [6, 12, 18, 24, 30, 36, 42, 48],
+    magnitudeDb(f, fc, slope, mode) {
+      checkSlope(this, slope);
+      return besselDb(slope / 6, mode === "hp" ? fc / f : f / fc);
+    },
+  },
+  CH1: {
+    id: "CH1",
+    label: "Chebyshev (1 dB ripple)",
+    shelfSafe: false, // its passband ripples, so a shelf made from it would not reach the full gain
+    allowedSlopes: [6, 12, 18, 24, 30, 36, 42, 48],
+    magnitudeDb(f, fc, slope, mode) {
+      checkSlope(this, slope);
+      return chebyshevDb(slope / 6, mode === "hp" ? fc / f : f / fc, 1);
     },
   },
 };
@@ -99,6 +123,17 @@ export function layerDb(f, layer) {
       return filterDb(f, layer.fc, layer.type, layer.slope, "lp");
     case "gain":
       return layer.db;
+    case "hiShelf":
+      // High shelf: same idea as the sub boost, scaled by the linear magnitude of the matching high-pass.
+      return layer.db * 10 ** (filterDb(f, layer.fc, layer.type, layer.slope, "hp") / 20);
+    case "bell":
+      return bellDb(f, layer.fc, layer.q, layer.db);
+    case "rLpf":
+      return resonantDb(f, layer.fc, layer.q, "lp");
+    case "rHpf":
+      return resonantDb(f, layer.fc, layer.q, "hp");
+    case "hill":
+      return hillDb(f, layer.fc, layer.width, layer.db);
     case "subBoost":
       // "Haystack": gain below a low-pass corner. db is scaled by the filter's linear magnitude (1 far below
       // the corner, 0 far above), so the full boost is reached well below fc and the corner gives a half

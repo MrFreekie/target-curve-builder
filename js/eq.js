@@ -14,7 +14,9 @@ const LN10 = Math.LN10;
  * @returns {number} dB
  */
 export function bellDb(f, fc, q, db) {
-  const x = f / fc;
+  // The bell is symmetric in log frequency, so fold x above 1 onto 1/x: exact, and no overflow for huge ratios.
+  let x = f / fc;
+  if (x > 1) x = 1 / x;
   const a = 10 ** (db / 40);
   const d = (1 - x * x) ** 2;
   return (10 / LN10) * Math.log((d + (x * a / q) ** 2) / (d + (x / (a * q)) ** 2));

@@ -256,7 +256,12 @@ function startApp() {
       case "fullTilt": return `Full tilt ${l.dbPerOct} dB/oct`;
       case "hpf": return `HPF ${l.fc} Hz ${l.type}${l.slope}`;
       case "lpf": return `LPF ${l.fc} Hz ${l.type}${l.slope}`;
-      case "subBoost": return `Sub boost ${l.db > 0 ? "+" : ""}${l.db} dB below ${l.fc} Hz ${l.type}${l.slope}`;
+      case "subBoost": return `Low shelf ${l.db > 0 ? "+" : ""}${l.db} dB below ${l.fc} Hz ${l.type}${l.slope}`;
+      case "hiShelf": return `High shelf ${l.db > 0 ? "+" : ""}${l.db} dB above ${l.fc} Hz ${l.type}${l.slope}`;
+      case "bell": return `Bell ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, Q ${l.q}`;
+      case "hill": return `Hill ${l.db > 0 ? "+" : ""}${l.db} dB at ${l.fc} Hz, ${l.width} oct wide`;
+      case "rHpf": return `Resonant HPF ${l.fc} Hz, Q ${l.q}`;
+      case "rLpf": return `Resonant LPF ${l.fc} Hz, Q ${l.q}`;
       default: return `Gain ${l.db} dB`;
     }
   }
@@ -350,15 +355,28 @@ function startApp() {
         body.append(numField("dB per octave", l.dbPerOct, set("dbPerOct")), numField("Corner (Hz)", l.corner, set("corner")));
         break;
       case "gain": body.append(numField("Level (dB)", l.db, set("db"))); break;
+      case "bell":
+        body.append(numField("Gain (± dB, up to 60)", l.db, set("db")), numField("Centre frequency (Hz)", l.fc, set("fc")),
+          numField("Q (0.1 wide to 50 notch)", l.q, set("q")));
+        break;
+      case "hill":
+        body.append(numField("Height (± dB, up to 60)", l.db, set("db")), numField("Centre frequency (Hz)", l.fc, set("fc")),
+          numField("Width at half height (octaves)", l.width, set("width")));
+        break;
+      case "rHpf":
+      case "rLpf":
+        body.append(numField("Corner frequency (Hz)", l.fc, set("fc")), numField("Q (0.707 flat, higher peaks)", l.q, set("q")));
+        break;
       default: {
-        if (l.kind === "subBoost") body.append(numField("Boost (± dB)", l.db, set("db")));
-        body.append(numField(l.kind === "subBoost" ? "Low-pass corner (Hz)" : "Corner frequency (Hz)", l.fc, set("fc")));
+        if (l.kind === "subBoost" || l.kind === "hiShelf") body.append(numField("Boost (± dB)", l.db, set("db")));
+        body.append(numField(l.kind === "subBoost" ? "Low-pass corner (Hz)" : l.kind === "hiShelf" ? "High-pass corner (Hz)" : "Corner frequency (Hz)", l.fc, set("fc")));
         const slopeHost = document.createElement("div");
         const fillSlope = () => {
           slopeHost.replaceChildren(selectField("Slope (dB/oct)",
             FILTERS[l.type].allowedSlopes.map((s) => [s, String(s)]), l.slope, (v) => { l.slope = Number(v); update(); }));
         };
-        body.append(selectField("Type", Object.values(FILTERS).map((f) => [f.id, f.label]), l.type, (v) => {
+        const shelf = l.kind === "subBoost" || l.kind === "hiShelf";
+        body.append(selectField("Type", Object.values(FILTERS).filter((f) => !(shelf && f.shelfSafe === false)).map((f) => [f.id, f.label]), l.type, (v) => {
           l.type = v;
           if (!FILTERS[v].allowedSlopes.includes(l.slope)) l.slope = FILTERS[v].allowedSlopes.at(-1);
           fillSlope();

@@ -1,7 +1,7 @@
 // Smaart .crv adapters: TF (read + write) and spectrum (read only).
 // Pure module: no DOM access. Rules are in docs/SPEC.md §5 and §6.
 import { round6 } from "../curve.js";
-import { FILTERS } from "../layers.js";
+import { FILTERS, LAYER_LIMITS } from "../layers.js";
 
 /** Known header keys (lower case) in canonical order. */
 const KNOWN = ["line", "color", "show", "type", "tolerance", "usetolerance", "offset"];
@@ -241,14 +241,23 @@ export function validateTf(doc, points) {
   if (!crvFileName(props.name)) err("Give the curve a file name.");
 
   for (const layer of doc.layers ?? []) {
-    if ((layer.kind === "hpf" || layer.kind === "lpf" || layer.kind === "subBoost") && layer.on !== false) {
+    if ((layer.kind === "hpf" || layer.kind === "lpf" || layer.kind === "subBoost" || layer.kind === "hiShelf") && layer.on !== false) {
       const filter = Object.hasOwn(FILTERS, layer.type) ? FILTERS[layer.type] : undefined;
-      const label = layer.kind === "subBoost" ? "Sub boost" : layer.kind.toUpperCase();
+      const label = { subBoost: "Low shelf", hiShelf: "High shelf" }[layer.kind] ?? layer.kind.toUpperCase();
       if (!filter) err(`${label}: unknown filter type "${layer.type}".`);
-      else if (!filter.allowedSlopes.includes(Number(layer.slope))) {
+      else if ((layer.kind === "subBoost" || layer.kind === "hiShelf") && filter.shelfSafe === false) {
+        err(`${label}: ${filter.label} can't be used for a shelf (its passband ripples). Use Butterworth, Linkwitz-Riley or Bessel.`);
+      } else if (!filter.allowedSlopes.includes(Number(layer.slope))) {
         err(`${label}: ${filter.label} allows ${filter.allowedSlopes.join(", ")} dB/oct (got ${layer.slope}).`);
       }
       if (!(Number(layer.fc) > 0)) err(`${label}: corner frequency must be greater than 0 Hz.`);
+    }
+    const extra = { bell: ["Bell", "q", LAYER_LIMITS.q], hill: ["Hill", "width", LAYER_LIMITS.width], rHpf: ["Resonant HPF", "q", LAYER_LIMITS.resonantQ], rLpf: ["Resonant LPF", "q", LAYER_LIMITS.resonantQ] }[layer.kind];
+    if (extra && layer.on !== false) {
+      const [name, key, [lo, hi]] = extra;
+      if (!(Number(layer.fc) > 0)) err(`${name}: frequency must be greater than 0 Hz.`);
+      if (!(Number(layer[key]) >= lo && Number(layer[key]) <= hi)) err(`${name}: ${key === "q" ? "Q" : key} must be between ${lo} and ${hi}.`);
+      if (layer.db !== undefined && !(Math.abs(Number(layer.db)) <= LAYER_LIMITS.db[1])) err(`${name}: gain must be between ${LAYER_LIMITS.db[0]} and +${LAYER_LIMITS.db[1]} dB.`);
     }
   }
   return out;

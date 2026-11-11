@@ -53,7 +53,7 @@ test("illegal slope or type throws; validation blocks export with a clear messag
   d.layers.push({ id: "s", ...sub({ slope: 30 }) });
   const r = buildCrv(d);
   assert.equal(r.text, null);
-  assert.ok(r.issues.some((i) => /Sub boost: .*dB\/oct/.test(i.message)), JSON.stringify(r.issues));
+  assert.ok(r.issues.some((i) => /Low shelf: .*dB\/oct/.test(i.message)), JSON.stringify(r.issues));
   const z = newDoc();
   z.layers.push({ id: "s", ...sub({ fc: 0 }) });
   assert.equal(buildCrv(z).text, null);

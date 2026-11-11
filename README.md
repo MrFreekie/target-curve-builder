@@ -7,7 +7,7 @@ Build, import, visualise and edit sound system tuning **target curves** in the b
 TF target curves need a measurement-capable edition of **Smaart 9.4 or later**, or Smaart Data Modeler. Smaart RTA can't import them.
 
 ## What it does
-- **Layers, summed in dB:** points, full-spectrum tilt, LF tilt (with an optional floor), HF tilt, high-pass and low-pass filters (Butterworth and Linkwitz-Riley), a gain offset, and a **Sub boost** (haystack): ± dB below a low-pass corner. Each layer can be switched on or off, edited, reordered or deleted.
+- **Layers, summed in dB:** points, full-spectrum tilt, LF tilt (with an optional floor), HF tilt, high-pass and low-pass filters (Butterworth and Linkwitz-Riley), a gain offset, low and high **shelves** (± dB below or above a corner, so a low shelf is the sub "haystack"), a **bell** (peak, notch or band-stop), a **hill** (smooth bump), and resonant 2nd-order filters. Filter types are Butterworth, Linkwitz-Riley (up to 96 dB/oct), Bessel and Chebyshev. Each layer can be switched on or off, edited, reordered or deleted.
 - **Live plot:** log frequency axis from 20 Hz to 20 kHz, the Smaart tolerance band, a hover readout, and a zoom from ±15 to ±40 dB (or auto), and a Y offset of ±20 dB to slide the view up or down.
 - **Edit points on the plot:** drag a point up or down to change its level. Hold Shift to move its frequency as well (snaps to 1/24 octave). With a point focused, use Up/Down to nudge it and Left/Right to switch point.
 - **Import:** drop a `.crv` anywhere on the page, or use **Import .crv**. The original stays on the plot as a dashed grey line. Spectrum curves can be viewed and converted to TF.

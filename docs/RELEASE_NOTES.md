@@ -1,6 +1,8 @@
 # Release notes
 
 ## Unreleased
+- More filter shapes (SPEC §4.4 to §4.4e): high shelf, bell (peak, notch, band-stop), hill (haystack bump) and resonant 2nd-order high-pass and low-pass layers; Bessel and Chebyshev (1 dB ripple) filter types; Butterworth and Linkwitz-Riley up to 96 dB/oct. The Sub boost layer is now called Low shelf.
+- Lines-only toggle, random colour that contrasts with the theme, and Reset to imported .crv.
 - Y offset: slide the plot's visible dB window up or down by up to ±20 dB (next to the zoom). A view setting only.
 - Sub boost ("haystack") layer: boost or cut by ± dB everything below a low-pass corner, with Butterworth or Linkwitz-Riley slope. See SPEC §4.4a.
 - "Breakpoints only" output grid: exports just the points needed to stay within a chosen dB error, because Smaart draws straight lines between points. See SPEC §3.4.
