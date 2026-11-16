@@ -383,6 +383,7 @@ function startApp() {
   const applyExportUi = () => {
     $("export-note-ascii").hidden = exportFormat !== "smaart-ascii";
     $("export-note-crv").hidden = exportFormat !== "smaart-tf";
+    $("export-note-globcon").hidden = exportFormat !== "globcon-csv";
   };
   applyExportUi();
   sel.addEventListener("change", () => {

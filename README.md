@@ -21,7 +21,7 @@ TF target curves need a measurement-capable edition of **Smaart 9.4 or later**, 
 - **Undo and redo:** Ctrl/Cmd+Z and Shift+Ctrl/Cmd+Z, at least 50 steps. Your work is autosaved in the browser.
 - **Name suggestion:** one click names the curve from its layers, for example `Tilt_3dBoct_1000Hz_HPF32_LR48`.
 - **Presets:** save curves in the browser, or as JSON files you can share. Built-in presets include A and C weighting (and inverses), RIAA, FM pre-emphasis, and the SMPTE ST 202:2010 cinema X-curve for small, medium and large theatres. Sources are in `docs/REFERENCE_CURVES.md`.
-- **Export:** one file at a time, as a Smaart target curve (`.crv`) a Smaart ASCII trace (`.txt`: Hz, dB, phase 0, coherence 1) or plain text (`.txt`: Hz and dB, tab separated, for REW, HouseCurve and spreadsheets). The `.crv` is written with tabs only, 6-decimal values and CRLF line endings, as Smaart expects. An unchanged import exports byte for byte as it came in.
+- **Export:** one file at a time, as a Smaart target curve (`.crv`) a Smaart ASCII trace (`.txt`: Hz, dB, phase 0, coherence 1) plain text (`.txt`: Hz and dB, tab separated, for REW, HouseCurve and spreadsheets) or GLOBCON CSV (`.csv`: 1024 points from 10 Hz to 32 kHz). The `.crv` is written with tabs only, 6-decimal values and CRLF line endings, as Smaart expects. An unchanged import exports byte for byte as it came in.
 
 ## How to use it
 1. Open the live site. Start from a preset, a new curve, or **Import .crv**.

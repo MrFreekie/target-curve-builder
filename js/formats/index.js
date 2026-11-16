@@ -2,9 +2,10 @@
 import { smaartTf, smaartSpectrum } from "./smaart.js";
 import { smaartAscii } from "./smaart-ascii.js";
 import { plainText } from "./plain-text.js";
+import { globconCsv } from "./globcon-csv.js";
 
 /** All adapters, in the order they are tried by detect(). */
-export const ADAPTERS = [smaartTf, smaartSpectrum, smaartAscii, plainText];
+export const ADAPTERS = [smaartTf, smaartSpectrum, smaartAscii, plainText, globconCsv];
 
 /** Look up an adapter by id, or undefined. */
 export function getAdapter(id) {

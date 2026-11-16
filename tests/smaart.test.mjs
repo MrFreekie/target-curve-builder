@@ -389,17 +389,17 @@ test("detectFormat returns null for text that is not a curve", () => {
 });
 
 test("registry: adapter ids, getAdapter and writableAdapters", () => {
-  assert.deepEqual(ADAPTERS.map((a) => a.id).sort(), ["plain-text", "smaart-ascii", "smaart-spectrum", "smaart-tf"]);
+  assert.deepEqual(ADAPTERS.map((a) => a.id).sort(), ["globcon-csv", "plain-text", "smaart-ascii", "smaart-spectrum", "smaart-tf"]);
   assert.equal(getAdapter("smaart-tf"), smaartTf);
   assert.equal(getAdapter("nope"), undefined);
-  assert.deepEqual(writableAdapters().map((a) => a.id), ["smaart-tf", "smaart-ascii", "plain-text"]);
+  assert.deepEqual(writableAdapters().map((a) => a.id), ["smaart-tf", "smaart-ascii", "plain-text", "globcon-csv"]);
 });
 
 test("adapters expose the SPEC §6 interface", () => {
   for (const a of ADAPTERS) {
     assert.equal(typeof a.id, "string");
     assert.equal(typeof a.label, "string");
-    assert.match(a.ext, /^\.(crv|txt)$/);
+    assert.match(a.ext, /^\.(crv|txt|csv)$/);
     for (const m of ["detect", "read", "write", "validate"]) assert.equal(typeof a[m], "function", `${a.id}.${m}`);
   }
   const r = smaartTf.read(HDR_LF + "63\t7\n315\t0\n");

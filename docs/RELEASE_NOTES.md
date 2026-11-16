@@ -1,6 +1,7 @@
 # Release notes
 
 ## Unreleased
+- GLOBCON CSV export (`.csv`), modelled on a GLOBCON curve file: `FREQUENCY,MAGNITUDE` with 1024 points on a fixed log grid from 10 Hz to 32 kHz, written exactly as the model file is (rewriting its own values gives the same bytes). It always uses its own grid, so the Output grid and trim settings don't apply to it.
 - Reference trace: when the trace is a Smaart transfer function text export, a Download trace with target button writes the same file back with the target subtracted from (or added to) the magnitude, after the trace's offset, smoothing and 0 dB at 1 kHz. Phase and coherence are untouched, so a processor that inverts the file gives a correction that follows the target.
 - Reference trace options: Smoothing at LF (wider at 20 Hz, easing to the main smoothing by 20 kHz), Peak bias (the line rides over peaks and largely ignores dips and nulls), Ignore low coherence (bins below a threshold are left out), and Set 0 dB at the 1 to 4 kHz average as an alternative to 1 kHz.
 

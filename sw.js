@@ -20,6 +20,7 @@ const FILES = [
   "js/curve.js",
   "js/doc.js",
   "js/eq.js",
+  "js/formats/globcon-csv.js",
   "js/formats/index.js",
   "js/formats/plain-text.js",
   "js/formats/smaart-ascii.js",

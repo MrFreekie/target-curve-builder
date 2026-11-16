@@ -50,7 +50,7 @@ export function buildCrv(doc, formatId = "smaart-tf", { withText = true } = {}) 
   let thrown = null;
   if (!merged.length) {
     try {
-      points = evaluate(doc);
+      points = adapter.fixedGrid ? evaluate(doc, [...adapter.fixedGrid]) : evaluate(doc); // some formats have a grid of their own
     } catch (e) {
       thrown = e.message;
     }

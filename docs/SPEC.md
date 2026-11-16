@@ -259,6 +259,8 @@ UseTolerance:<TAB>0
 
 v1 adapters are `smaart-tf` (read and write) and `smaart-spectrum` (read only). Export is blocked while `validate` returns any errors.
 
+**GLOBCON CSV** (`globcon-csv`, export only, added after v1.1.0) is modelled on one GLOBCON curve file. It has a `fixedGrid`: `buildCrv` then evaluates the document at those frequencies (`evaluate(doc, freqs)`) and ignores the Output grid, Breakpoints and trims. The grid is 1024 points, `fround(10 * 3200^(k/1023))` for k = 0 to 1023 (10 Hz to 32 kHz, equal steps in log frequency; this reproduces every frequency in the model file exactly). The file is `FREQUENCY,MAGNITUDE`, LF line endings, one `Hz,dB` row per point and a final newline. Each number is a 32-bit float widened to a double and printed as Java's `Double.toString` does: shortest digits, `0.0` for zero (never `-0.0`), and an `E` exponent below 0.001 (for example `-5.665079224854708E-4`). Validation is the shared point, layer and name check plus the grid itself. Rewriting the model file's own values with this writer gives the same bytes. What the dB column means to the receiving software is not known: it is written as the curve's level.
+
 ---
 
 ## 7. Document model (also the preset/JSON format)

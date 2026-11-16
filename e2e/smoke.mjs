@@ -309,6 +309,25 @@ try {
     assert.deepEqual(r, { shown: true, cohRow: true, peakOff: true, peakOn: true, info: true, name: "My Mic with target.txt", head: true, rows: true, same: true, differ: true, subtractSaved: true });
   });
 
+  await test("GLOBCON CSV can be chosen and exports its own 1024-point grid", async () => {
+    await open("/?fresh");
+    const r = await run(`const wait = (ms) => new Promise(r => setTimeout(r, ms));
+      document.getElementById("add-kind").value = "fullTilt"; document.getElementById("btn-add").click(); await wait(200);
+      const sel = document.getElementById("export-format");
+      sel.value = "globcon-csv"; sel.dispatchEvent(new Event("change", { bubbles: true })); await wait(300);
+      const note = !document.getElementById("export-note-globcon").hidden;
+      const enabled = !document.getElementById("btn-export").disabled;
+      const grabbed = []; const real = URL.createObjectURL; URL.createObjectURL = (b) => { grabbed.push(b); return real.call(URL, b); };
+      const names = []; const clk = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () { names.push(this.download); };
+      document.getElementById("btn-export").click(); await wait(300);
+      HTMLAnchorElement.prototype.click = clk; URL.createObjectURL = real;
+      const text = grabbed.length ? await grabbed[0].text() : "";
+      const lines = text.split(String.fromCharCode(10));
+      sel.value = "smaart-tf"; sel.dispatchEvent(new Event("change", { bubbles: true })); await wait(200);
+      return { note, enabled, name: /[.]csv$/.test(names[0] || ""), head: lines[0], rows: lines.length, first: lines[1].slice(0, 5), last: lines[1024].startsWith("32000.0,"), noteGone: document.getElementById("export-note-globcon").hidden };`);
+    assert.deepEqual(r, { note: true, enabled: true, name: true, head: "FREQUENCY,MAGNITUDE", rows: 1026, first: "10.0,", last: true, noteGone: true });
+  });
+
   await test("presets: a built-in loads, a curve can be saved in the browser, listed and loaded back", async () => {
     await open("/?fresh");
     const r = await run(`const wait = (ms) => new Promise(r => setTimeout(r, ms));
