@@ -1,5 +1,8 @@
 # Release notes
 
+## Unreleased
+- Reference trace: when the trace is a Smaart transfer function text export, a Download trace with target button writes the same file back with the target subtracted from (or added to) the magnitude, after the trace's offset, smoothing and 0 dB at 1 kHz. Phase and coherence are untouched, so a processor that inverts the file gives a correction that follows the target.
+
 ## v1.1.0 (2026-11-11)
 - Behind the scenes: the 1,300-line `app.js` is split into the Layers panel, Import (files, trace, shared links), Presets and a few small helpers, each in its own file, with more browser tests covering every layer type, the trace, import and presets.
 - Works offline: after the first visit the app opens with no network (a service worker keeps a copy), and it can be installed from the browser. It re-checks the server every time it is online, so an old copy is never used while a new one exists.

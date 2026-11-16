@@ -267,6 +267,37 @@ try {
     assert.deepEqual(r, { shown: true, offsetBack: "0", hidden: true, layerAdded: true, asked: true, added: true, name: "Edited" });
   });
 
+  await test("a transfer function text trace can be downloaded with the target taken off it (or added), layout unchanged", async () => {
+    await open("/?fresh");
+    const r = await run(`const wait = (ms) => new Promise(r => setTimeout(r, ms));
+      const CRLF = String.fromCharCode(13, 10);
+      const src = ["\\tMy Mic\\t\\t", "Frequency (Hz)\\tMagnitude (dB)\\tPhase (degrees)\\tCoherence"];
+      for (let i = 0; i <= 30; i++) src.push((20 * 2 ** (i / 3)).toFixed(6) + "\\t" + (-5 + Math.sin(i)).toFixed(2) + "\\t" + (i * 3).toFixed(2) + "\\t0.90");
+      const dt = new DataTransfer(); dt.items.add(new File([src.join(CRLF) + CRLF], "My Mic.txt"));
+      const inp = document.getElementById("file-trace"); inp.files = dt.files; inp.dispatchEvent(new Event("change")); await wait(500);
+      const shown = !document.getElementById("tr-export").hidden;
+      document.getElementById("add-kind").value = "fullTilt"; document.getElementById("btn-add").click(); await wait(200);
+      const grabbed = [];
+      const real = URL.createObjectURL; URL.createObjectURL = (b) => { grabbed.push(b); return real.call(URL, b); };
+      const name = []; const clk = HTMLAnchorElement.prototype.click; HTMLAnchorElement.prototype.click = function () { name.push(this.download); };
+      const sub = document.getElementById("tr-subtract");
+      if (!sub.checked) sub.click();
+      document.getElementById("tr-download").click(); await wait(300);
+      sub.click(); document.getElementById("tr-download").click(); await wait(300);
+      HTMLAnchorElement.prototype.click = clk; URL.createObjectURL = real;
+      const [a, b] = await Promise.all(grabbed.map(x => x.text()));
+      const la = a.split(CRLF), lb = b.split(CRLF);
+      let target = 0, same = true;
+      for (let i = 2; i < la.length - 1; i++) {
+        const x = la[i].split("\\t"), y = lb[i].split("\\t"), o = src[i].split("\\t");
+        target = Math.max(target, Math.abs(Number(x[1]) - Number(y[1])));
+        if (x[0] !== o[0] || y[0] !== o[0] || x[2] !== o[2] || x[3] !== o[3] || y[3] !== o[3]) same = false;
+        if (Math.abs((Number(x[1]) + Number(y[1])) / 2 - Number(o[1])) > 0.011) same = false;
+      }
+      return { shown, name: name[0], head: la.slice(0, 2).join("|") === src.slice(0, 2).join("|"), rows: la.length === src.length + 1, same, differ: target > 0.5, subtractSaved: sub.checked === false };`);
+    assert.deepEqual(r, { shown: true, name: "My Mic with target.txt", head: true, rows: true, same: true, differ: true, subtractSaved: true });
+  });
+
   await test("presets: a built-in loads, a curve can be saved in the browser, listed and loaded back", async () => {
     await open("/?fresh");
     const r = await run(`const wait = (ms) => new Promise(r => setTimeout(r, ms));

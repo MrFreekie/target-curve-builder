@@ -4,7 +4,7 @@ import { FILTERS, LAYER_LIMITS, interpPoints } from "./layers.js";
 import { WEIGHTINGS, SHAPES } from "./eq.js";
 import { detectFormat } from "./formats/index.js";
 import { sanitiseFileName, KNOWN, parseValue } from "./formats/smaart.js";
-import { MAX_TRACE_POINTS, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT } from "./trace.js";
+import { MAX_TRACE_POINTS, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT, cleanTf } from "./trace.js";
 
 export const LAYER_KINDS = {
   points: "Points",
@@ -112,12 +112,15 @@ function loadTemplate(t) {
   if (!isObj(t) || !Array.isArray(t.points) || t.points.length > MAX_TRACE_POINTS) return null;
   let points;
   try { points = loadPoints(t.points); } catch { return null; }
-  points.sort((a, b) => a[0] - b[0]);
-  points = points.filter((p, i) => i === 0 || p[0] !== points[i - 1][0]);
+  const order = points.map((_, i) => i).sort((a, b) => points[a][0] - points[b][0]);
+  const keep = order.filter((i, k) => k === 0 || points[i][0] !== points[order[k - 1]][0]);
+  const saved = points.length;
+  points = keep.map((i) => points[i]);
   if (points.length < 2) return null;
+  const tf = cleanTf(t.tf, saved, keep);
   const offset = Number.isFinite(t.offset) ? Math.max(-TRACE_OFFSET_LIMIT, Math.min(TRACE_OFFSET_LIMIT, t.offset)) : 0;
   const name = typeof t.name === "string" ? clean(t.name).replace(/	/g, " ").trim().slice(0, 100) : "";
-  return { name, points, offset, smooth: TRACE_SMOOTHINGS.includes(t.smooth) ? t.smooth : 0, normalise: t.normalise === true, show: t.show !== false };
+  return { name, points, offset, smooth: TRACE_SMOOTHINGS.includes(t.smooth) ? t.smooth : 0, normalise: t.normalise === true, show: t.show !== false, ...(tf ? { tf } : {}) };
 }
 
 function loadPoints(list) {

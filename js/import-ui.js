@@ -2,7 +2,11 @@
 // links (copy one, open one). Everything it changes goes through the document (app.doc) and update().
 import { docFromImport, isBlank, addImportedLayer, totalPoints, MAX_TOTAL_POINTS, newLayer } from "./doc.js";
 import * as presets from "./presets.js";
-import { parseTrace, traceCurve, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT, MAX_TRACE_TEXT } from "./trace.js";
+import { parseTrace, traceCurve, traceWithTarget, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT, MAX_TRACE_TEXT } from "./trace.js";
+import { evaluate } from "./curve.js";
+import { layerIssues } from "./build.js";
+import { sanitiseFileName } from "./formats/smaart.js";
+import { getPref, setPref } from "./prefs.js";
 import { encodeShare, decodeShare, LONG_LINK } from "./share.js";
 import { createBindNum } from "./parse.js";
 
@@ -11,7 +15,7 @@ import { createBindNum } from "./parse.js";
  * @param {{getActiveTab: () => number, setActiveTab: (n: number) => void}} layersUi
  */
 export function createImportUi(app, layersUi) {
-  const { $, update, showNotice, refreshAll, setDoc, expanded } = app;
+  const { $, update, showNotice, refreshAll, setDoc, expanded, download } = app;
   const bindNum = createBindNum(app);
   // ---- import
   async function importFile(file, extra = []) {
@@ -102,6 +106,8 @@ export function createImportUi(app, layersUi) {
     $("tr-norm").checked = t.normalise;
     $("tr-smooth").value = String(t.smooth);
     if (document.activeElement !== $("tr-offset")) $("tr-offset").value = String(t.offset);
+    $("tr-export").hidden = !t.tf;
+    $("tr-subtract").checked = getPref("tcb-trace-subtract") !== "0";
   }
   $("btn-trace").addEventListener("click", () => $("file-trace").click());
   $("file-trace").addEventListener("change", async () => {
@@ -111,7 +117,7 @@ export function createImportUi(app, layersUi) {
     try {
       if (file.size > MAX_TRACE_TEXT) throw new Error("That file is too large to be a trace.");
       const r = parseTrace(await file.text());
-      app.doc.template = { name: file.name.replace(/\.[^.]*$/, "").slice(0, 100), points: r.points, offset: 0, smooth: 0, normalise: false, show: true };
+      app.doc.template = { name: file.name.replace(/\.[^.]*$/, "").slice(0, 100), points: r.points, offset: 0, smooth: 0, normalise: false, show: true, ...(r.tf ? { tf: r.tf } : {}) };
       app.messages = [`Trace ${file.name}: ${r.points.length} points read.`, ...r.warnings];
     } catch (e) {
       app.messages = [`Couldn't read ${file.name} as a trace: ${e.message}`];
@@ -123,6 +129,25 @@ export function createImportUi(app, layersUi) {
   $("tr-norm").addEventListener("change", () => { if (app.doc.template) { app.doc.template.normalise = $("tr-norm").checked; update(); } });
   $("tr-smooth").addEventListener("change", () => { if (app.doc.template) { app.doc.template.smooth = Number($("tr-smooth").value); update(); } });
   bindNum("tr-offset", (n) => { if (app.doc.template) app.doc.template.offset = n; }, () => app.doc.template?.offset ?? 0, { check: (v) => Math.abs(v) <= TRACE_OFFSET_LIMIT });
+  $("tr-subtract").addEventListener("change", () => setPref("tcb-trace-subtract", $("tr-subtract").checked ? "1" : "0"));
+  $("tr-download").addEventListener("click", () => {
+    const t = app.doc.template;
+    if (!t?.tf) return;
+    const problems = layerIssues(app.doc);
+    if (problems.length) { showNotice([`Fix the curve first: ${problems[0].message}`]); return; }
+    try {
+      const target = evaluate(app.doc, t.points.map((p) => p[0])).map((p) => p[1]);
+      const text = traceWithTarget(t, target, $("tr-subtract").checked);
+      download(`${sanitiseFileName(t.name || "trace") || "trace"} with target.txt`, text, "text/plain");
+      const lo = Math.min(...target).toFixed(1);
+      const hi = Math.max(...target).toFixed(1);
+      app.messages = [`Downloaded the trace ${$("tr-subtract").checked ? "minus" : "plus"} the target (the target runs from ${lo} dB to ${hi} dB across the trace), with its offset and smoothing applied. Phase and coherence are unchanged.`];
+    } catch (e) {
+      app.messages = [`Couldn't write the trace: ${e.message}`];
+    }
+    app.noticeSig = "";
+    update();
+  });
   $("tr-remove").addEventListener("click", () => { delete app.doc.template; update(); $("btn-trace").focus(); });
   $("tr-layer").addEventListener("click", () => {
     if (!app.doc.template) return;

@@ -102,7 +102,7 @@
 
       <section aria-labelledby="h-trace">
         <h2 id="h-trace">Reference trace</h2>
-        <p class="note">Import a measurement or any curve to draw it behind your target. It is never exported.</p>
+        <p class="note">Import a measurement or any curve to draw it behind your target. It is never part of the curve file you export.</p>
         <button type="button" id="btn-trace" class="wide">Import trace…</button>
         <div id="trace-ctl" hidden>
           <p class="note" id="trace-info"></p>
@@ -110,6 +110,11 @@
           <div class="field"><label for="tr-offset">Offset (dB)</label><input id="tr-offset" type="text" inputmode="decimal" autocomplete="off"></div>
           <div class="field"><label for="tr-smooth">Smoothing</label><select id="tr-smooth"></select></div>
           <div class="field"><label for="tr-norm">0 dB at 1 kHz</label><input id="tr-norm" type="checkbox"></div>
+          <div id="tr-export" hidden>
+            <div class="field"><label for="tr-subtract">Subtract the target</label><input id="tr-subtract" type="checkbox"></div>
+            <p class="note">For a processor that inverts the measurement: subtracting the target makes the correction follow it. Untick to add it instead.</p>
+            <button type="button" id="tr-download" class="wide">Download trace with target</button>
+          </div>
           <button type="button" id="tr-layer" class="wide">Add as a layer</button>
           <button type="button" id="tr-remove" class="wide">Remove trace</button>
         </div>

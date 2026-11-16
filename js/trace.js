@@ -43,32 +43,105 @@ export function parseTrace(text) {
   const warnings = [];
   let raw;
   let source = "text";
+  let tf = null;
   const found = detectFormat(text);
   if (found) {
     raw = found.adapter.read(text).points;
     source = found.adapter.id;
   } else {
     raw = [];
-    for (const line of text.split(/\r\n|\r|\n/)) {
+    const lines = text.split(/\r\n|\r|\n/);
+    const rows = []; // [freq, level, the row's cells as written]
+    for (const line of lines) {
       const t = line.trim();
       if (!t || /^(\*|#|;|\/\/)/.test(t)) continue;
       const parts = t.split(/[\t ;,]+/);
       if (parts.length < 2 || !NUMBER.test(parts[0]) || !NUMBER.test(parts[1])) continue;
-      raw.push([Number(parts[0]), Number(parts[1])]);
+      rows.push([Number(parts[0]), Number(parts[1]), t.split("\t")]);
     }
+    raw = rows;
+    tf = readTfLayout(lines, rows, text);
   }
   const good = raw.filter(([f, g]) => Number.isFinite(f) && f > 0 && Number.isFinite(g));
   if (good.length < raw.length) warnings.push(`${raw.length - good.length} rows were skipped (no positive frequency or level).`);
   good.sort((a, b) => a[0] - b[0]);
-  let points = good.filter((p, i) => i === 0 || p[0] !== good[i - 1][0]);
-  if (points.length < good.length) warnings.push(`${good.length - points.length} rows with a repeated frequency were dropped.`);
-  if (points.length < 2) throw new Error("No frequency and level pairs were found. A trace needs at least 2 rows of Hz and dB.");
+  let kept = good.filter((p, i) => i === 0 || p[0] !== good[i - 1][0]);
+  if (kept.length < good.length) warnings.push(`${good.length - kept.length} rows with a repeated frequency were dropped.`);
+  if (kept.length < 2) throw new Error("No frequency and level pairs were found. A trace needs at least 2 rows of Hz and dB.");
+  let points = kept.map((p) => [p[0], p[1]]);
+  if (tf) tf = { ...tf, cells: kept.map((p) => p[2]) };
   if (points.length > MAX_TRACE_POINTS) {
     const before = points.length;
     points = binTo48(points);
-    warnings.push(`The trace had ${before} points, so it was averaged to ${points.length} (1/48 octave).`);
+    tf = null; // averaged points no longer line up with the file's own rows
+    warnings.push(`The trace had ${before} points, so it was averaged to ${points.length} (1/48 octave), so it can't be downloaded back with the target.`);
   }
-  return { points, warnings, source };
+  return { points, warnings, source, ...(tf ? { tf } : {}) };
+}
+
+/** The most header lines kept to write a download back out. */
+const MAX_HEAD_LINES = 4;
+
+/**
+ * Recognise a Smaart transfer function text export: a header row that starts "Frequency (Hz)", "Magnitude (dB)",
+ * then every data row has the same tab-separated columns (phase, coherence...). Returns what is needed to write the
+ * file back out in the same layout, or null for any other text.
+ */
+function readTfLayout(lines, rows, text) {
+  if (rows.length < 2) return null;
+  const cols = rows[0][2].length;
+  if (cols < 3 || !rows.every((r) => r[2].length === cols && r[2].every((c) => NUMBER.test(c.trim())))) return null;
+  const first = lines.findIndex((l) => l.trim() === rows[0][2].join("\t"));
+  if (first < 1) return null;
+  const head = lines.slice(Math.max(0, first - MAX_HEAD_LINES), first);
+  const header = head.at(-1) ?? "";
+  if (!/^\s*frequency\b[^\t]*\t\s*magnitude\b/i.test(header)) return null;
+  if (header.split("\t").length !== cols) return null;
+  const dp = Math.min(6, Math.max(...rows.map((r) => (r[2][1].trim().split(".")[1] ?? "").length)));
+  return { head, dp, eol: text.includes("\r\n") ? "\r\n" : "\n", cells: [] };
+}
+
+/**
+ * Check the saved file layout of a trace (from an autosave or a preset: untrusted) and keep the rows in `keep`
+ * (the indexes the loader kept after sorting and dropping repeats). Returns null when anything is off.
+ * @param {unknown} tf
+ * @param {number} count how many points the saved trace had
+ * @param {number[]} keep
+ */
+export function cleanTf(tf, count, keep) {
+  if (tf === null || typeof tf !== "object" || !Array.isArray(tf.head) || !Array.isArray(tf.cells)) return null;
+  if (tf.head.length < 1 || tf.head.length > MAX_HEAD_LINES || tf.cells.length !== count) return null;
+  if (!tf.head.every((h) => typeof h === "string" && h.length <= 200 && !/[\u0000-\u0008\u000a-\u001f\u007f]/.test(h))) return null;
+  if (!Number.isInteger(tf.dp) || tf.dp < 0 || tf.dp > 6 || (tf.eol !== "\r\n" && tf.eol !== "\n")) return null;
+  const width = tf.cells[0]?.length;
+  if (!(width >= 3 && width <= 8)) return null;
+  const ok = tf.cells.every((c) => Array.isArray(c) && c.length === width && c.every((s) => typeof s === "string" && s.length <= 24 && NUMBER.test(s.trim())));
+  if (!ok) return null;
+  return { head: tf.head.slice(), dp: tf.dp, eol: tf.eol, cells: keep.map((i) => tf.cells[i].map((s) => s.trim())) };
+}
+
+/**
+ * Write a transfer function text trace back out with the target curve combined into its magnitude column, in the
+ * same layout as the file it came from (same header lines, same columns, phase and coherence untouched).
+ * The trace is as drawn: smoothed, normalised and offset. `target[i]` is the target's level in dB at points[i].
+ * @param {{points: number[][], tf: {head: string[], dp: number, eol: string, cells: string[][]}, offset?: number, smooth?: number, normalise?: boolean}} t
+ * @param {number[]} target dB, one per trace point
+ * @param {boolean} subtract true gives trace - target (for a processor that inverts the trace); false gives trace + target
+ * @returns {string}
+ */
+export function traceWithTarget(t, target, subtract = true) {
+  const tf = t.tf;
+  if (!tf || tf.cells.length !== t.points.length || target.length !== t.points.length) throw new Error("This trace has no layout to write back out.");
+  const drawn = traceCurve(t);
+  const sign = subtract ? -1 : 1;
+  const out = tf.head.slice();
+  tf.cells.forEach((cells, i) => {
+    const db = drawn[i][1] + sign * target[i];
+    if (!Number.isFinite(db)) throw new Error("The target gave a value that can't be written.");
+    const text = db.toFixed(tf.dp);
+    out.push([cells[0], /^-0(\.0*)?$/.test(text) ? text.slice(1) : text, ...cells.slice(2)].join("\t"));
+  });
+  return out.join(tf.eol) + tf.eol;
 }
 
 /** Level at log2-frequency `x` on the trace (a straight line between its points against log frequency; flat beyond its ends). */
