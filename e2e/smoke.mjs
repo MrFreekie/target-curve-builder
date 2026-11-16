@@ -257,14 +257,16 @@ try {
       const before = document.querySelectorAll("#layers li.layer").length;
       document.getElementById("tr-layer").click(); await new Promise(r => setTimeout(r, 200));
       const after = document.querySelectorAll("#layers li.layer").length;
+      const lastTitle = [...document.querySelectorAll("#layers li.layer")].at(-1).querySelector("[aria-expanded]");
+      const collapsed = lastTitle?.getAttribute("aria-expanded") === "false";
       // a file dropped on a curve that has been edited asks what to do
       document.getElementById("p-name").value = "Edited"; document.getElementById("p-name").dispatchEvent(new Event("input", { bubbles: true }));
       const dt2 = new DataTransfer(); dt2.items.add(new File([${JSON.stringify(CRV)}], "Other.crv"));
       const imp = document.getElementById("file-import"); imp.files = dt2.files; imp.dispatchEvent(new Event("change")); await new Promise(r => setTimeout(r, 500));
       const asked = document.getElementById("dlg-import").open;
       document.getElementById("imp-add").click(); await new Promise(r => setTimeout(r, 300));
-      return { shown, offsetBack, hidden, layerAdded: after === before + 1, asked, added: document.querySelectorAll("#layers li.layer").length === after + 1, name: document.getElementById("p-name").value };`);
-    assert.deepEqual(r, { shown: true, offsetBack: "0", hidden: true, layerAdded: true, asked: true, added: true, name: "Edited" });
+      return { shown, offsetBack, hidden, layerAdded: after === before + 1, collapsed, asked, added: document.querySelectorAll("#layers li.layer").length === after + 1, name: document.getElementById("p-name").value };`);
+    assert.deepEqual(r, { shown: true, offsetBack: "0", hidden: true, layerAdded: true, collapsed: true, asked: true, added: true, name: "Edited" });
   });
 
   await test("a transfer function text trace can be downloaded with the target taken off it (or added), layout unchanged", async () => {

@@ -10,6 +10,9 @@ import { getPref, setPref } from "./prefs.js";
 import { encodeShare, decodeShare, LONG_LINK } from "./share.js";
 import { createBindNum } from "./parse.js";
 
+/** A Points layer added from a file or a trace opens its editor only if it has this many points or fewer. */
+const MAX_OPEN_POINTS = 40;
+
 /**
  * @param {object} app the context from app.js
  * @param {{getActiveTab: () => number, setActiveTab: (n: number) => void}} layersUi
@@ -59,7 +62,7 @@ export function createImportUi(app, layersUi) {
       const r = addImportedLayer(app.doc, p.text, p.name);
       app.doc = r.doc;
       layersUi.setActiveTab(1);
-      expanded.add(r.layerId);
+      if ((r.doc.layers.find((l) => l.id === r.layerId)?.points?.length ?? 0) <= MAX_OPEN_POINTS) expanded.add(r.layerId); // a long list stays shut
       app.messages = [
         ...p.extra,
         `Added ${p.name} as a new Points layer (${app.doc.layers.at(-1).points.length} points).${r.shifted ? " It is a spectrum curve, so it was shifted to 0 dB at 1 kHz." : ""}`,
@@ -198,7 +201,7 @@ export function createImportUi(app, layersUi) {
     l.label = app.doc.template.name || "Trace";
     l.group = layersUi.getActiveTab();
     app.doc.layers.push(l);
-    expanded.add(l.id);
+    if (l.points.length <= MAX_OPEN_POINTS) expanded.add(l.id); // a long list stays shut: it would fill the panel
     app.messages = [`Added the trace as a Points layer (${l.points.length} points), with its offset and smoothing applied.`];
     app.noticeSig = "";
     refreshAll();
