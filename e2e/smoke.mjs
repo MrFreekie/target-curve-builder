@@ -276,6 +276,15 @@ try {
       const dt = new DataTransfer(); dt.items.add(new File([src.join(CRLF) + CRLF], "My Mic.txt"));
       const inp = document.getElementById("file-trace"); inp.files = dt.files; inp.dispatchEvent(new Event("change")); await wait(500);
       const shown = !document.getElementById("tr-export").hidden;
+      const cohRow = !document.getElementById("tr-coh-row").hidden;
+      const set = (id, v) => { const e = document.getElementById(id); e.value = v; e.dispatchEvent(new Event("change", { bubbles: true })); };
+      const peakOff = document.getElementById("tr-peak").disabled;
+      set("tr-smooth", "3"); set("tr-smooth-lf", "1"); set("tr-peak", "3"); set("tr-norm-at", "avg"); document.getElementById("tr-norm").click();
+      document.getElementById("tr-coh-on").click(); await wait(200);
+      const info = document.getElementById("trace-info").textContent;
+      const peakOn = !document.getElementById("tr-peak").disabled;
+      set("tr-smooth", "0"); set("tr-smooth-lf", "same"); set("tr-peak", "0"); set("tr-norm-at", "1k"); document.getElementById("tr-norm").click();
+      document.getElementById("tr-coh-on").click(); await wait(200);
       document.getElementById("add-kind").value = "fullTilt"; document.getElementById("btn-add").click(); await wait(200);
       const grabbed = [];
       const real = URL.createObjectURL; URL.createObjectURL = (b) => { grabbed.push(b); return real.call(URL, b); };
@@ -294,8 +303,8 @@ try {
         if (x[0] !== o[0] || y[0] !== o[0] || x[2] !== o[2] || x[3] !== o[3] || y[3] !== o[3]) same = false;
         if (Math.abs((Number(x[1]) + Number(y[1])) / 2 - Number(o[1])) > 0.011) same = false;
       }
-      return { shown, name: name[0], head: la.slice(0, 2).join("|") === src.slice(0, 2).join("|"), rows: la.length === src.length + 1, same, differ: target > 0.5, subtractSaved: sub.checked === false };`);
-    assert.deepEqual(r, { shown: true, name: "My Mic with target.txt", head: true, rows: true, same: true, differ: true, subtractSaved: true });
+      return { shown, cohRow, peakOff, peakOn, info: /Ignoring [0-9]+ of 31 bins/.test(info), name: name[0], head: la.slice(0, 2).join("|") === src.slice(0, 2).join("|"), rows: la.length === src.length + 1, same, differ: target > 0.5, subtractSaved: sub.checked === false };`);
+    assert.deepEqual(r, { shown: true, cohRow: true, peakOff: true, peakOn: true, info: true, name: "My Mic with target.txt", head: true, rows: true, same: true, differ: true, subtractSaved: true });
   });
 
   await test("presets: a built-in loads, a curve can be saved in the browser, listed and loaded back", async () => {

@@ -115,3 +115,141 @@ test("a trace too long to keep as it was can't be downloaded back", () => {
   assert.equal(r.tf, undefined);
   assert.ok(r.warnings.some((w) => /can't be downloaded back/.test(w)));
 });
+
+// ---- frequency-dependent smoothing, peak bias and the coherence mask (SPEC §10)
+import { PEAK_BIAS, traceMask } from "../js/trace.js";
+
+/** Brute force: sample the straight-line trace densely and take the window statistic numerically. */
+function oracle(points, hz, half, beta) {
+  const xs = points.map((p) => Math.log2(p[0]));
+  const at = (x) => {
+    if (x <= xs[0]) return points[0][1];
+    if (x >= xs.at(-1)) return points.at(-1)[1];
+    let j = 1;
+    while (xs[j] < x) j++;
+    return points[j - 1][1] + ((points[j][1] - points[j - 1][1]) * (x - xs[j - 1])) / (xs[j] - xs[j - 1]);
+  };
+  const c = Math.log2(hz);
+  const N = 40000;
+  const v = [];
+  for (let k = 0; k <= N; k++) v.push(at(c - half + (2 * half * k) / N));
+  if (beta === Infinity) return Math.max(...v);
+  if (beta === 0) return v.reduce((a, b) => a + b, 0) / v.length;
+  const top = Math.max(...v);
+  return top + Math.log(v.reduce((a, b) => a + Math.exp(beta * (b - top)), 0) / v.length) / beta;
+}
+
+// a bumpy trace: 1/12-octave spacing from 20 Hz to 20 kHz, peaks, a deep null and a narrow spike
+const bumpy = [];
+for (let i = 0; i <= 120; i++) {
+  const f = 20 * 2 ** (i / 12);
+  let g = -6 + 3 * Math.sin(i * 1.7) + 2 * Math.cos(i * 0.4);
+  if (i === 60) g = -46; // a null
+  if (i === 90) g += 9; // a peak
+  bumpy.push([Number(f.toFixed(6)), Number(g.toFixed(2))]);
+}
+
+test("smoothing that changes with frequency: the window eases from the LF width at 20 Hz to the main width at 20 kHz", () => {
+  const t = { points: bumpy, smooth: 12, smoothLf: 3 };
+  const out = traceCurve(t);
+  const widthAt = (hz) => { const u = (Math.log2(hz) - Math.log2(20)) / (Math.log2(20000) - Math.log2(20)); return (1 / 3 + (1 / 12 - 1 / 3) * u); };
+  for (const i of [10, 30, 60, 80, 100]) {
+    const hz = bumpy[i][0];
+    assert.ok(Math.abs(out[i][1] - oracle(bumpy, hz, widthAt(hz) / 2, 0)) < 2e-3, `row ${i}`);
+  }
+  // same at both ends is the old fixed-width smoothing, and "off" at one end leaves that end raw
+  assert.deepEqual(traceCurve({ points: bumpy, smooth: 6, smoothLf: 6 }), traceCurve({ points: bumpy, smooth: 6 }));
+  const lfOnly = traceCurve({ points: bumpy, smooth: 0, smoothLf: 3 });
+  assert.notEqual(lfOnly[0][1], bumpy[0][1]);
+  assert.equal(lfOnly.at(-1)[1], bumpy.at(-1)[1]);
+});
+
+test("peak bias: matches a brute-force soft maximum, rises with the setting, and a null barely moves it", () => {
+  const half = 1 / 6; // 1/3 octave
+  const levels = PEAK_BIAS.map((_, k) => traceCurve({ points: bumpy, smooth: 3, peak: k })[60][1]);
+  PEAK_BIAS.forEach((beta, k) => {
+    for (const i of [30, 60, 90]) {
+      const got = traceCurve({ points: bumpy, smooth: 3, peak: k })[i][1];
+      assert.ok(Math.abs(got - oracle(bumpy, bumpy[i][0], half, beta)) < 2e-3, `peak ${k}, row ${i}: ${got}`);
+    }
+  });
+  for (let k = 1; k < levels.length; k++) assert.ok(levels[k] >= levels[k - 1] - 1e-9, "never goes down as the bias goes up");
+  // the null at row 60 drags the plain average down far more than the strongest bias
+  const neighbours = bumpy.map((p, i) => (i === 60 ? [p[0], (bumpy[59][1] + bumpy[61][1]) / 2] : p));
+  const drop = (k) => traceCurve({ points: neighbours, smooth: 3, peak: k })[60][1] - traceCurve({ points: bumpy, smooth: 3, peak: k })[60][1];
+  assert.ok(drop(0) > 4, `plain average: the null costs ${drop(0)} dB`);
+  assert.ok(drop(3) < drop(0) / 3 && drop(4) < 1e-9, `strong ${drop(3)} dB, hold ${drop(4)} dB, plain ${drop(0)} dB`);
+  // with no smoothing there is no window, so peak bias does nothing
+  assert.deepEqual(traceCurve({ points: bumpy, peak: 3 }), traceCurve({ points: bumpy }));
+});
+
+test("coherence mask: low-coherence rows take no part in smoothing and are bridged when smoothing is off", () => {
+  const text = make();
+  const t = withTf(text, { cohOn: true, cohMin: 0.6 });
+  const mask = traceMask(t);
+  assert.deepEqual([mask.active, mask.kept, mask.total, mask.keep], [true, 3, 5, [true, true, true, false, false]]);
+  const out = traceCurve(t);
+  assert.equal(out[0][1], -10.5);
+  assert.equal(out[2][1], 0);
+  // the 4 kHz and 20 kHz rows (coherence 0.5 and 0.2) are held at the last good level, 1 kHz
+  assert.equal(out[3][1], 0);
+  assert.equal(out[4][1], 0);
+  // a bridged row between two good ones is a straight line against log frequency
+  const mid = withTf(make().replace("0.80\r\n", "0.10\r\n"), { cohOn: true, cohMin: 0.5 });
+  const bridged = traceCurve(mid)[1][1];
+  const f = (hz) => Math.log2(hz);
+  const expect = -10.5 + ((0 - -10.5) * (f(100) - f(20))) / (f(1000) - f(20));
+  assert.ok(Math.abs(bridged - expect) < 1e-5, `${bridged} vs ${expect}`);
+  // too few good rows: the mask switches itself off
+  const none = traceMask(withTf(text, { cohOn: true, cohMin: 0.99 }));
+  assert.deepEqual([none.active, none.kept], [false, 0]);
+  // no coherence column (a plain two-column trace): nothing to mask
+  assert.equal(traceMask({ points: bumpy, cohOn: true, cohMin: 0.9 }).available, false);
+  // smoothing ignores the masked rows: an extreme value in a masked row changes nothing
+  const spiky = withTf(make().replace("-6.00\t33.00\t0.20", "50.00\t33.00\t0.20"), { cohOn: true, cohMin: 0.6, smooth: 1 });
+  const calm = withTf(make(), { cohOn: true, cohMin: 0.6, smooth: 1 });
+  assert.deepEqual(traceCurve(spiky).slice(0, 3), traceCurve(calm).slice(0, 3));
+});
+
+test("the download follows the smoothing, peak bias and coherence mask", () => {
+  const t = withTf(make(), { cohOn: true, cohMin: 0.6, smooth: 1, smoothLf: 3, peak: 2 });
+  const shown = traceCurve(t);
+  const out = traceWithTarget(t, [0, 0, 0, 0, 0], true).split("\r\n").slice(2, 7).map((l) => Number(l.split("\t")[1]));
+  out.forEach((v, i) => assert.ok(Math.abs(v - shown[i][1]) < 0.0051));
+});
+
+test("the new trace settings load safely and bad ones are dropped", () => {
+  const t = withTf(make());
+  const base = { ...newDoc(), template: { name: "x", ...t, show: true, smoothLf: 3, peak: 2, cohOn: true, cohMin: 0.7 } };
+  const ok = loadDoc(JSON.parse(JSON.stringify(base))).template;
+  assert.deepEqual([ok.smoothLf, ok.peak, ok.cohOn, ok.cohMin], [3, 2, true, 0.7]);
+  const bad = loadDoc(JSON.parse(JSON.stringify({ ...base, template: { ...base.template, smoothLf: 5, peak: 9, cohOn: "yes", cohMin: 7 } }))).template;
+  assert.equal(bad.smoothLf, undefined);
+  assert.equal(bad.peak, undefined);
+  assert.equal(bad.cohOn, undefined);
+  assert.equal(bad.cohMin, 1);
+  const none = loadDoc(JSON.parse(JSON.stringify({ ...base, template: { ...base.template, tf: undefined } }))).template;
+  assert.equal(none.cohOn, undefined, "no layout, no coherence mask");
+});
+
+test("0 dB at the 1 to 4 kHz average: the mean over log frequency of the straight-line trace, not of the points", () => {
+  // dense points between 1 and 2 kHz, sparse between 2 and 4 kHz: a mean of the points would lean to the dense part
+  const pts = [[500, -3]];
+  for (let i = 0; i <= 40; i++) pts.push([1000 * 2 ** (i / 40), -10]);
+  pts.push([4000, -2], [8000, -2]);
+  const raw = pts.map((p) => p[1]);
+  const t = { points: pts, normalise: true, normAvg: true, offset: 1.5 };
+  const out = traceCurve(t);
+  // 1 to 2 kHz is flat -10 (one octave); 2 to 4 kHz runs straight from -10 to -2 (mean -6): the band mean is -8
+  const shift = 1.5 + 8;
+  out.forEach((p, i) => assert.ok(Math.abs(p[1] - (raw[i] + shift)) < 1e-5, `row ${i}: ${p[1]}`));
+  // the same band, measured on the output, reads the offset
+  const band = oracle(out, 2000, 1, 0);
+  assert.ok(Math.abs(band - 1.5) < 2e-3, `band mean ${band}`);
+  // 1 kHz reference still available and different; a trace that stops short of 4 kHz is left alone
+  assert.notDeepEqual(traceCurve({ ...t, normAvg: false }), out);
+  const short = traceCurve({ points: pts.slice(0, 20), normalise: true, normAvg: true });
+  assert.deepEqual(short.map((p) => p[1]), pts.slice(0, 20).map((p) => p[1]));
+  assert.equal(loadDoc(JSON.parse(JSON.stringify({ ...newDoc(), template: { points: pts, normAvg: true } }))).template.normAvg, true);
+  assert.equal(loadDoc(JSON.parse(JSON.stringify({ ...newDoc(), template: { points: pts, normAvg: "yes" } }))).template.normAvg, undefined);
+});

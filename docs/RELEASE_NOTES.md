@@ -2,6 +2,7 @@
 
 ## Unreleased
 - Reference trace: when the trace is a Smaart transfer function text export, a Download trace with target button writes the same file back with the target subtracted from (or added to) the magnitude, after the trace's offset, smoothing and 0 dB at 1 kHz. Phase and coherence are untouched, so a processor that inverts the file gives a correction that follows the target.
+- Reference trace options: Smoothing at LF (wider at 20 Hz, easing to the main smoothing by 20 kHz), Peak bias (the line rides over peaks and largely ignores dips and nulls), Ignore low coherence (bins below a threshold are left out), and Set 0 dB at the 1 to 4 kHz average as an alternative to 1 kHz.
 
 ## v1.1.0 (2026-11-11)
 - Behind the scenes: the 1,300-line `app.js` is split into the Layers panel, Import (files, trace, shared links), Presets and a few small helpers, each in its own file, with more browser tests covering every layer type, the trace, import and presets.

@@ -2,7 +2,7 @@
 // links (copy one, open one). Everything it changes goes through the document (app.doc) and update().
 import { docFromImport, isBlank, addImportedLayer, totalPoints, MAX_TOTAL_POINTS, newLayer } from "./doc.js";
 import * as presets from "./presets.js";
-import { parseTrace, traceCurve, traceWithTarget, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT, MAX_TRACE_TEXT } from "./trace.js";
+import { parseTrace, traceCurve, traceWithTarget, traceMask, PEAK_LABELS, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT, MAX_TRACE_TEXT } from "./trace.js";
 import { evaluate } from "./curve.js";
 import { layerIssues } from "./build.js";
 import { sanitiseFileName } from "./formats/smaart.js";
@@ -95,6 +95,22 @@ export function createImportUi(app, layersUi) {
     o.textContent = n === 0 ? "Off" : `1/${n} octave`;
     $("tr-smooth").append(o);
   }
+  const sameAsMain = document.createElement("option");
+  sameAsMain.value = "same";
+  sameAsMain.textContent = "Same as above";
+  $("tr-smooth-lf").append(sameAsMain);
+  for (const n of TRACE_SMOOTHINGS) {
+    const o = document.createElement("option");
+    o.value = String(n);
+    o.textContent = n === 0 ? "Off" : `1/${n} octave`;
+    $("tr-smooth-lf").append(o);
+  }
+  PEAK_LABELS.forEach((label, i) => {
+    const o = document.createElement("option");
+    o.value = String(i);
+    o.textContent = label;
+    $("tr-peak").append(o);
+  });
   /** Copy the trace settings into the controls, unless a control is being typed in. */
   function syncTraceUi() {
     const t = app.doc.template;
@@ -104,9 +120,20 @@ export function createImportUi(app, layersUi) {
     $("trace-info").textContent = `${t.name || "Trace"}: ${t.points.length} points, ${t.points[0][0]} Hz to ${t.points.at(-1)[0]} Hz.`;
     $("tr-show").checked = t.show;
     $("tr-norm").checked = t.normalise;
+    $("tr-norm-at").value = t.normAvg === true ? "avg" : "1k";
     $("tr-smooth").value = String(t.smooth);
     if (document.activeElement !== $("tr-offset")) $("tr-offset").value = String(t.offset);
     $("tr-export").hidden = !t.tf;
+    $("tr-smooth-lf").value = t.smoothLf === undefined ? "same" : String(t.smoothLf);
+    $("tr-peak").value = String(t.peak ?? 0);
+    $("tr-peak").disabled = !(t.smooth > 0 || t.smoothLf > 0);
+    const mask = traceMask(t);
+    $("tr-coh-row").hidden = !mask.available;
+    $("tr-coh-on").checked = t.cohOn === true;
+    if (document.activeElement !== $("tr-coh")) $("tr-coh").value = String(t.cohMin ?? 0.5);
+    if (mask.available && t.cohOn === true) {
+      $("trace-info").textContent += mask.active ? ` Ignoring ${mask.total - mask.kept} of ${mask.total} bins below coherence ${t.cohMin ?? 0.5}.` : ` Fewer than 2 bins reach coherence ${t.cohMin ?? 0.5}, so every bin is used.`;
+    }
     $("tr-subtract").checked = getPref("tcb-trace-subtract") !== "0";
   }
   $("btn-trace").addEventListener("click", () => $("file-trace").click());
@@ -127,7 +154,21 @@ export function createImportUi(app, layersUi) {
   });
   $("tr-show").addEventListener("change", () => { if (app.doc.template) { app.doc.template.show = $("tr-show").checked; update(); } });
   $("tr-norm").addEventListener("change", () => { if (app.doc.template) { app.doc.template.normalise = $("tr-norm").checked; update(); } });
+  $("tr-norm-at").addEventListener("change", () => {
+    if (!app.doc.template) return;
+    if ($("tr-norm-at").value === "avg") app.doc.template.normAvg = true; else delete app.doc.template.normAvg;
+    update();
+  });
   $("tr-smooth").addEventListener("change", () => { if (app.doc.template) { app.doc.template.smooth = Number($("tr-smooth").value); update(); } });
+  $("tr-smooth-lf").addEventListener("change", () => {
+    if (!app.doc.template) return;
+    const v = $("tr-smooth-lf").value;
+    if (v === "same") delete app.doc.template.smoothLf; else app.doc.template.smoothLf = Number(v);
+    update();
+  });
+  $("tr-peak").addEventListener("change", () => { if (app.doc.template) { app.doc.template.peak = Number($("tr-peak").value); update(); } });
+  $("tr-coh-on").addEventListener("change", () => { if (app.doc.template) { app.doc.template.cohOn = $("tr-coh-on").checked; update(); } });
+  bindNum("tr-coh", (n) => { if (app.doc.template) app.doc.template.cohMin = n; }, () => app.doc.template?.cohMin ?? 0.5, { check: (v) => v >= 0 && v <= 1 });
   bindNum("tr-offset", (n) => { if (app.doc.template) app.doc.template.offset = n; }, () => app.doc.template?.offset ?? 0, { check: (v) => Math.abs(v) <= TRACE_OFFSET_LIMIT });
   $("tr-subtract").addEventListener("change", () => setPref("tcb-trace-subtract", $("tr-subtract").checked ? "1" : "0"));
   $("tr-download").addEventListener("click", () => {

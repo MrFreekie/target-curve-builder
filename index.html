@@ -109,7 +109,13 @@
           <div class="field"><label for="tr-show">Show trace</label><input id="tr-show" type="checkbox"></div>
           <div class="field"><label for="tr-offset">Offset (dB)</label><input id="tr-offset" type="text" inputmode="decimal" autocomplete="off"></div>
           <div class="field"><label for="tr-smooth">Smoothing</label><select id="tr-smooth"></select></div>
-          <div class="field"><label for="tr-norm">0 dB at 1 kHz</label><input id="tr-norm" type="checkbox"></div>
+          <div class="field"><label for="tr-smooth-lf">Smoothing at LF</label><select id="tr-smooth-lf"></select></div>
+          <div class="field"><label for="tr-peak">Peak bias</label><select id="tr-peak"></select></div>
+          <p class="note">Smoothing at LF starts at 20 Hz and eases into the main smoothing by 20 kHz. Peak bias makes peaks count more than dips inside the smoothing window, so the line rides over the peaks.</p>
+          <div id="tr-coh-row" hidden>
+            <div class="field"><label for="tr-coh-on">Ignore low coherence</label><div class="check-row"><input id="tr-coh-on" type="checkbox"><input id="tr-coh" type="text" inputmode="decimal" autocomplete="off" aria-label="Coherence threshold"></div></div>
+          </div>
+          <div class="field"><label for="tr-norm">Set 0 dB</label><div class="check-row"><input id="tr-norm" type="checkbox"><select id="tr-norm-at" aria-label="Zero reference"><option value="1k">at 1 kHz</option><option value="avg">at the 1 to 4 kHz average</option></select></div></div>
           <div id="tr-export" hidden>
             <div class="field"><label for="tr-subtract">Subtract the target</label><input id="tr-subtract" type="checkbox"></div>
             <p class="note">For a processor that inverts the measurement: subtracting the target makes the correction follow it. Untick to add it instead.</p>

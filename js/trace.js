@@ -179,20 +179,106 @@ function windowAverage(xs, ys, c, half) {
   return sum / (b - a);
 }
 
+/** Peak bias choices (the stored number is the index): how strongly peaks count against dips inside the smoothing window. */
+export const PEAK_BIAS = [0, 0.1, 0.3, 1, Infinity];
+export const PEAK_LABELS = ["Off (plain average)", "Light", "Medium", "Strong", "Peak hold"];
+/** Frequency-dependent smoothing runs from the "at LF" width at 20 Hz to the main width at 20 kHz. */
+const SMOOTH_F_LOW = 20;
+const SMOOTH_F_HIGH = 20000;
+
+/** Half the smoothing window, in octaves, at log2 frequency x: the width eases (against log frequency) from wLf at 20 Hz to wHf at 20 kHz. */
+function halfWidth(x, wLf, wHf) {
+  const a = Math.log2(SMOOTH_F_LOW);
+  const u = Math.min(1, Math.max(0, (x - a) / (Math.log2(SMOOTH_F_HIGH) - a)));
+  return (wLf + (wHf - wLf) * u) / 2;
+}
+
+/**
+ * The level of the trace over log2-frequency [c - half, c + half], biased towards peaks by `beta` (per dB):
+ * beta 0 is the plain average of the dB values (exact, as windowAverage); beta > 0 is the exponential ("soft maximum")
+ * mean, (1/beta) ln(mean(exp(beta * dB))), which dips barely lower and peaks pull up; Infinity is the highest level in the window.
+ * The trace is taken as straight lines between its points against log frequency and flat beyond its ends.
+ */
+function windowStat(xs, ys, c, half, beta) {
+  if (!(half > 0)) return levelAtX(xs, ys, c);
+  if (beta === 0) return windowAverage(xs, ys, c, half);
+  const a = c - half;
+  const b = c + half;
+  const kx = [a];
+  const ky = [levelAtX(xs, ys, a)];
+  let lo = 0;
+  let hi = xs.length;
+  while (lo < hi) { const mid = (lo + hi) >> 1; if (xs[mid] <= a) lo = mid + 1; else hi = mid; }
+  for (let i = lo; i < xs.length && xs[i] < b; i++) { kx.push(xs[i]); ky.push(ys[i]); }
+  kx.push(b);
+  ky.push(levelAtX(xs, ys, b));
+  const top = Math.max(...ky);
+  if (beta === Infinity) return top;
+  let sum = 0;
+  for (let j = 0; j + 1 < kx.length; j++) {
+    const d0 = beta * (ky[j] - top);
+    const d1 = beta * (ky[j + 1] - top);
+    const delta = d1 - d0;
+    // integral of exp over a straight segment, kept small by measuring from the window's highest level
+    sum += (kx[j + 1] - kx[j]) * Math.exp(d0) * (Math.abs(delta) < 1e-12 ? 1 : Math.expm1(delta) / delta);
+  }
+  return top + Math.log(sum / (b - a)) / beta;
+}
+
+/** Which column of a transfer function layout holds the coherence, or -1. */
+function coherenceColumn(tf) {
+  return tf ? (tf.head.at(-1) ?? "").split("\t").findIndex((h) => /^\s*coherence\b/i.test(h)) : -1;
+}
+
+/**
+ * The coherence mask of a trace: with `cohOn` and a coherence column, the rows at or above `cohMin` are the ones used.
+ * @returns {{available: boolean, active: boolean, total: number, kept: number, keep: boolean[]|null, idx: number[]|null}}
+ *   `active` is false when the mask is off or would leave fewer than 2 rows (then every row is used).
+ */
+export function traceMask(t) {
+  const total = t.points.length;
+  const col = t.tf && t.tf.cells.length === total ? coherenceColumn(t.tf) : -1;
+  const none = { available: col >= 0, active: false, total, kept: total, keep: null, idx: null };
+  if (col < 0 || t.cohOn !== true) return none;
+  const min = Math.min(1, Math.max(0, Number.isFinite(t.cohMin) ? t.cohMin : 0.5));
+  const keep = t.tf.cells.map((c) => Number(c[col]) >= min);
+  const idx = keep.flatMap((k, i) => (k ? [i] : []));
+  if (idx.length < 2) return { ...none, kept: idx.length };
+  return { available: true, active: true, total, kept: idx.length, keep, idx };
+}
+
 /**
  * The trace as it is drawn: smoothed, then (if asked) shifted so it reads 0 dB at 1 kHz, then moved by the offset.
  * Smoothing replaces the level at each of the trace's own frequencies with the exact average of the dB values over a
- * window 1/N octave wide centred there.
- * @param {{points: number[][], offset?: number, smooth?: number, normalise?: boolean}} t
+ * window 1/N octave wide centred there (`smooth` is N; `smoothLf`, when set, is the width at 20 Hz, easing to `smooth` at 20 kHz).
+ * `peak` (an index into PEAK_BIAS) makes the window favour peaks over dips. Rows the coherence mask leaves out take no part
+ * in the smoothing, and where there is no smoothing they are replaced by a straight line between their neighbours.
+ * @param {{points: number[][], offset?: number, smooth?: number, smoothLf?: number|null, peak?: number, normalise?: boolean, cohOn?: boolean, cohMin?: number, tf?: object}} t
  * @returns {number[][]} [[hz, db], ...]
  */
 export function traceCurve(t) {
   const pts = t.points;
-  const xs = pts.map((p) => Math.log2(p[0]));
-  const ys = pts.map((p) => p[1]);
-  const n = Number(t.smooth) || 0;
-  const sm = n > 0 ? xs.map((x) => windowAverage(xs, ys, x, 1 / (2 * n))) : ys;
+  const xsAll = pts.map((p) => Math.log2(p[0]));
+  const ysAll = pts.map((p) => p[1]);
+  const mask = traceMask(t);
+  const xs = mask.idx ? mask.idx.map((i) => xsAll[i]) : xsAll;
+  const ys = mask.idx ? mask.idx.map((i) => ysAll[i]) : ysAll;
+  const nHf = Number(t.smooth) || 0;
+  const nLf = t.smoothLf === undefined || t.smoothLf === null ? nHf : Number(t.smoothLf) || 0;
+  const wHf = nHf > 0 ? 1 / nHf : 0;
+  const wLf = nLf > 0 ? 1 / nLf : 0;
+  const beta = PEAK_BIAS[t.peak] ?? 0;
+  let sm;
+  if (wHf > 0 || wLf > 0) sm = xsAll.map((x) => windowStat(xs, ys, x, halfWidth(x, wLf, wHf), beta));
+  else if (mask.active) sm = xsAll.map((x, i) => (mask.keep[i] ? ysAll[i] : levelAtX(xs, ys, x)));
+  else sm = ysAll;
   let shift = Number(t.offset) || 0;
-  if (t.normalise === true && xs[0] <= Math.log2(1000) && xs[xs.length - 1] >= Math.log2(1000)) shift -= levelAtX(xs, sm, Math.log2(1000));
+  if (t.normalise === true) {
+    // the reference is the level at 1 kHz, or (normAvg) the average over 1 kHz to 4 kHz: the exact mean of the straight-line
+    // trace against log frequency, so a region with many closely spaced points counts no more than one with few
+    const lo = Math.log2(1000);
+    const hi = t.normAvg === true ? Math.log2(4000) : lo;
+    if (xsAll[0] <= lo && xsAll[xsAll.length - 1] >= hi) shift -= hi > lo ? windowAverage(xsAll, sm, (lo + hi) / 2, (hi - lo) / 2) : levelAtX(xsAll, sm, lo);
+  }
   return pts.map((p, i) => [p[0], round6(sm[i] + shift)]);
 }

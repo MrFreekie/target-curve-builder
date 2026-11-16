@@ -4,7 +4,7 @@ import { FILTERS, LAYER_LIMITS, interpPoints } from "./layers.js";
 import { WEIGHTINGS, SHAPES } from "./eq.js";
 import { detectFormat } from "./formats/index.js";
 import { sanitiseFileName, KNOWN, parseValue } from "./formats/smaart.js";
-import { MAX_TRACE_POINTS, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT, cleanTf } from "./trace.js";
+import { MAX_TRACE_POINTS, TRACE_SMOOTHINGS, TRACE_OFFSET_LIMIT, PEAK_BIAS, cleanTf } from "./trace.js";
 
 export const LAYER_KINDS = {
   points: "Points",
@@ -120,7 +120,13 @@ function loadTemplate(t) {
   const tf = cleanTf(t.tf, saved, keep);
   const offset = Number.isFinite(t.offset) ? Math.max(-TRACE_OFFSET_LIMIT, Math.min(TRACE_OFFSET_LIMIT, t.offset)) : 0;
   const name = typeof t.name === "string" ? clean(t.name).replace(/	/g, " ").trim().slice(0, 100) : "";
-  return { name, points, offset, smooth: TRACE_SMOOTHINGS.includes(t.smooth) ? t.smooth : 0, normalise: t.normalise === true, show: t.show !== false, ...(tf ? { tf } : {}) };
+  return { name, points, offset, smooth: TRACE_SMOOTHINGS.includes(t.smooth) ? t.smooth : 0, normalise: t.normalise === true, show: t.show !== false,
+    ...(t.normAvg === true ? { normAvg: true } : {}),
+    ...(TRACE_SMOOTHINGS.includes(t.smoothLf) ? { smoothLf: t.smoothLf } : {}),
+    ...(Number.isInteger(t.peak) && t.peak > 0 && t.peak < PEAK_BIAS.length ? { peak: t.peak } : {}),
+    ...(tf && t.cohOn === true ? { cohOn: true } : {}),
+    ...(tf && Number.isFinite(t.cohMin) ? { cohMin: Math.min(1, Math.max(0, t.cohMin)) } : {}),
+    ...(tf ? { tf } : {}) };
 }
 
 function loadPoints(list) {
